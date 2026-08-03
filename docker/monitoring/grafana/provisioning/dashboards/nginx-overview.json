@@ -1,0 +1,221 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Nginx Estado",
+      "description": "1 = activo, 0 = caído",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "CAÍDO" }, "1": { "color": "green", "text": "ACTIVO" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up{job=\"nginx-exporter\"}", "legendFormat": "" }]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Conexiones Activas",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 800 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "nginx_connections_active", "legendFormat": "activas" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Request Rate (req/s)",
+      "description": "Requests por segundo en los últimos 5 minutos",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(rate({service=\"nginx\", log_type=\"access\"}[5m]))", "legendFormat": "req/s", "queryType": "range" }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Tasa Error 5xx (%)",
+      "description": "Porcentaje de respuestas 5xx en los últimos 5 minutos",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }] },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(rate({service=\"nginx\", log_type=\"access\", status=~\"5..\"}[5m])) / sum(rate({service=\"nginx\", log_type=\"access\"}[5m])) * 100", "legendFormat": "error %", "queryType": "range" }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Conexiones Waiting",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "nginx_connections_waiting", "legendFormat": "waiting" }]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Total Requests (últimos 5m)",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["sum"] }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(count_over_time({service=\"nginx\", log_type=\"access\"}[5m]))", "legendFormat": "requests", "queryType": "range" }]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Requests por Código de Estado",
+      "description": "Tasa de requests agrupada por HTTP status code",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 1, "showPoints": "never", "spanNulls": false },
+          "unit": "reqps"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "4xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "2xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(rate({service=\"nginx\", log_type=\"access\", status=~\"2..\"}[5m]))", "legendFormat": "2xx", "queryType": "range" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(rate({service=\"nginx\", log_type=\"access\", status=~\"3..\"}[5m]))", "legendFormat": "3xx", "queryType": "range" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(rate({service=\"nginx\", log_type=\"access\", status=~\"4..\"}[5m]))", "legendFormat": "4xx", "queryType": "range" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum(rate({service=\"nginx\", log_type=\"access\", status=~\"5..\"}[5m]))", "legendFormat": "5xx", "queryType": "range" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Latencia Upstream (P50 / P95 / P99)",
+      "description": "upstream_response_time extraído del log JSON de Nginx",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 5, "lineWidth": 2, "showPoints": "never" },
+          "unit": "s"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p99" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.50, {service=\"nginx\", log_type=\"access\"} | json | upstream_response_time != \"-\" | unwrap upstream_response_time [5m])", "legendFormat": "p50", "queryType": "range" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.95, {service=\"nginx\", log_type=\"access\"} | json | upstream_response_time != \"-\" | unwrap upstream_response_time [5m])", "legendFormat": "p95", "queryType": "range" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "quantile_over_time(0.99, {service=\"nginx\", log_type=\"access\"} | json | upstream_response_time != \"-\" | unwrap upstream_response_time [5m])", "legendFormat": "p99", "queryType": "range" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Conexiones Nginx",
+      "description": "Conexiones activas, en reading, writing y waiting",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "nginx_connections_active", "legendFormat": "activas" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "nginx_connections_reading", "legendFormat": "reading" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "nginx_connections_writing", "legendFormat": "writing" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "nginx_connections_waiting", "legendFormat": "waiting" }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Tráfico por Método HTTP",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (request_method) (rate({service=\"nginx\", log_type=\"access\"}[5m]))", "legendFormat": "{{request_method}}", "queryType": "range" }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["nginx", "proxy", "http"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Nginx Overview",
+  "uid": "nginx-overview",
+  "version": 1
+}

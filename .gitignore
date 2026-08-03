@@ -1,0 +1,80 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+*.tfvars
+!*.tfvars.example
+override.tf
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# IDE / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+*.dockerfile.bak
+
+# .NET / C#
+bin/
+obj/
+*.csproj.user
+*.sln.user
+appsettings.*.json
+!appsettings.*.example.json
+
+# SSL Certificates (private)
+*.pem
+*.key
+*.crt
+!example-cert.crt
+
+# k6 results
+k6/results/*.json
+
+# node_modules (if any)
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+venv/
+env/
+
+# npm/yarn
+.yarn-cache
+.npm
+
+# MacOS
+.AppleDouble
+.LSOverride
+
+# Windows
+desktop.ini
+
+# Local development artifacts
+*.tmp
+*.swp
+.local/

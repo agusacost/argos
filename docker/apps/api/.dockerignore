@@ -1,0 +1,5 @@
+# Excluir artefactos de build, no el código fuente de MembresiaAPI/
+**/bin/
+**/obj/
+*.user
+.vs/

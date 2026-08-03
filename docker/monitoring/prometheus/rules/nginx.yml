@@ -1,0 +1,39 @@
+groups:
+  - name: nginx
+    interval: 30s
+    rules:
+      - alert: NginxDown
+        expr: up{job="nginx-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Nginx no responde"
+          description: "El exporter de Nginx no puede scrapearlo en {{ $labels.instance }} durante más de 1 minuto."
+
+      - alert: NginxHighActiveConnections
+        expr: nginx_connections_active > 800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Nginx con alta cantidad de conexiones activas"
+          description: "{{ $value }} conexiones activas (umbral: 800). Posible pico de tráfico o conexiones colgadas."
+
+      - alert: NginxHighRequestRate
+        expr: rate(nginx_http_requests_total[5m]) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tasa de requests de Nginx inusualmente alta"
+          description: "{{ $value | humanize }} req/s en los últimos 5 minutos (umbral: 500 req/s)."
+
+      - alert: NginxWaitingConnections
+        expr: nginx_connections_waiting > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alto número de conexiones en estado waiting"
+          description: "{{ $value }} conexiones en waiting. Puede indicar backend lento o keep-alive excesivo."

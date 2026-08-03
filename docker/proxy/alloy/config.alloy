@@ -1,0 +1,148 @@
+// ============================================================
+// Grafana Alloy - Nodo 2 (Nginx Proxy)
+// Recolección de logs de Nginx y contenedores Docker hacia Loki
+// Sucesor de Promtail
+// ============================================================
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// ============================================================
+// Destino: Loki en Nodo 3
+// ============================================================
+loki.write "loki_endpoint" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+
+    min_backoff_period  = "100ms"
+    max_backoff_period  = "5s"
+    max_backoff_retries = 5
+    remote_timeout      = "10s"
+  }
+}
+
+// ============================================================
+// Logs de contenedores via Docker socket (opcional)
+// Para habilitar: montar /var/run/docker.sock en alloy (ver docker-compose.yml)
+// y descomentar este bloque.
+// ============================================================
+// discovery.docker "all_containers" {
+//   host             = "unix:///var/run/docker.sock"
+//   refresh_interval = "5s"
+// }
+//
+// discovery.relabel "docker_containers" {
+//   targets = discovery.docker.all_containers.targets
+//
+//   rule {
+//     source_labels = ["__meta_docker_container_name"]
+//     regex         = "/(.*)"
+//     target_label  = "container"
+//   }
+// }
+//
+// loki.source.docker "docker_logs" {
+//   host       = "unix:///var/run/docker.sock"
+//   targets    = discovery.relabel.docker_containers.output
+//   forward_to = [loki.write.loki_endpoint.receiver]
+// }
+
+// ============================================================
+// Nginx access.log - Formato JSON estructurado
+// ============================================================
+local.file_match "nginx_access" {
+  path_targets = [{
+    __path__ = "/var/log/nginx/access.log",
+    node     = "node2-proxy",
+    service  = "nginx",
+    log_type = "access",
+    domain   = "api.observabilidad.local",
+  }]
+}
+
+loki.source.file "nginx_access_source" {
+  targets    = local.file_match.nginx_access.targets
+  forward_to = [loki.process.nginx_access_pipeline.receiver]
+}
+
+loki.process "nginx_access_pipeline" {
+  forward_to = [loki.write.loki_endpoint.receiver]
+
+  stage.json {
+    expressions = {
+      time                   = "time",
+      remote_addr            = "remote_addr",
+      remote_user            = "remote_user",
+      request_method         = "request_method",
+      request_uri            = "request_uri",
+      request_protocol       = "request_protocol",
+      status                 = "status",
+      body_bytes_sent        = "body_bytes_sent",
+      http_referer           = "http_referer",
+      http_user_agent        = "http_user_agent",
+      http_x_forwarded_for   = "http_x_forwarded_for",
+      request_time           = "request_time",
+      upstream_response_time = "upstream_response_time",
+      upstream_addr          = "upstream_addr",
+      upstream_status        = "upstream_status",
+      request_length         = "request_length",
+      scheme                 = "scheme",
+      host                   = "host",
+      server_name            = "server_name",
+    }
+  }
+
+  stage.labels {
+    values = {
+      status         = "status",
+      request_method = "request_method",
+      host           = "host",
+      remote_addr    = "remote_addr",
+    }
+  }
+
+  stage.timestamp {
+    source = "time"
+    format = "RFC3339"
+  }
+}
+
+// ============================================================
+// Nginx error.log - Formato estándar de Nginx
+// ============================================================
+local.file_match "nginx_error" {
+  path_targets = [{
+    __path__ = "/var/log/nginx/error.log",
+    node     = "node2-proxy",
+    service  = "nginx",
+    log_type = "error",
+    domain   = "api.observabilidad.local",
+  }]
+}
+
+loki.source.file "nginx_error_source" {
+  targets    = local.file_match.nginx_error.targets
+  forward_to = [loki.process.nginx_error_pipeline.receiver]
+}
+
+loki.process "nginx_error_pipeline" {
+  forward_to = [loki.write.loki_endpoint.receiver]
+
+  stage.regex {
+    expression = "^(?P<timestamp>\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2}) \\[(?P<level>\\w+)\\] (?P<pid>\\d+)#(?P<tid>\\d+): (?P<message>.*)"
+  }
+
+  stage.labels {
+    values = {
+      level = "level",
+    }
+  }
+
+  stage.timestamp {
+    source   = "timestamp"
+    format   = "2006/01/02 15:04:05"
+    location = "UTC"
+  }
+}

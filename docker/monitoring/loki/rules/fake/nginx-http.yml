@@ -1,0 +1,62 @@
+groups:
+  - name: nginx-http
+    interval: 1m
+    rules:
+      - alert: NginxHighErrorRate
+        expr: |
+          sum(rate({service="nginx", log_type="access", status=~"5.."}[5m]))
+          /
+          sum(rate({service="nginx", log_type="access"}[5m])) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tasa de errores 5xx > 5%"
+          description: "El {{ $value | humanize }}% de los requests en los últimos 5 minutos retornaron status 5xx."
+
+      - alert: NginxCriticalErrorRate
+        expr: |
+          sum(rate({service="nginx", log_type="access", status=~"5.."}[5m]))
+          /
+          sum(rate({service="nginx", log_type="access"}[5m])) * 100 > 20
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Tasa de errores 5xx > 20% — servicio degradado"
+          description: "El {{ $value | humanize }}% de los requests retornan 5xx. Revisar aplicación y upstream."
+
+      - alert: NginxHighResponseTime
+        expr: |
+          quantile_over_time(0.95, {service="nginx", log_type="access"}
+            | json
+            | upstream_response_time != "-"
+            | unwrap upstream_response_time [5m]) > 2
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latencia P95 del upstream > 2s"
+          description: "El P95 de upstream_response_time supera los 2 segundos (actual: {{ $value | humanize }}s)."
+
+      - alert: NginxSuspiciousIPActivity
+        expr: |
+          sum by (remote_addr) (
+            rate({service="nginx", log_type="access"}[1m]) * 60
+          ) > 200
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "IP generando más de 200 req/min"
+          description: "La IP {{ $labels.remote_addr }} generó {{ $value | humanize }} req/min. Posible scraping o ataque."
+
+      - alert: NginxErrorLogSpike
+        expr: |
+          sum(rate({service="nginx", log_type="error"}[5m])) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Spike en error.log de Nginx"
+          description: "Más de 1 error/s en el error.log de Nginx en los últimos 5 minutos."

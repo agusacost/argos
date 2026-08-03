@@ -1,0 +1,105 @@
+services:
+  # Nginx Reverse Proxy
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "8443:443"
+    volumes:
+      # Montar volúmenes para logs de Nginx (compartidos con Alloy)
+      - nginx-logs:/var/log/nginx
+    networks:
+      - proxy
+      - argos-net
+    restart: unless-stopped
+
+  # Nginx Prometheus Exporter
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.1.0
+    container_name: nginx-prometheus-exporter
+    command:
+      - -nginx.scrape-uri
+      - http://nginx:8081/nginx_status
+    ports:
+      - "9113:9113"
+    depends_on:
+      - nginx
+    networks:
+      - proxy
+      - argos-net
+    restart: unless-stopped
+
+  # Node Exporter - Métricas del host
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - proxy
+      - argos-net
+    restart: unless-stopped
+
+  # cAdvisor - Métricas de contenedores
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - proxy
+      - argos-net
+    restart: unless-stopped
+
+  # Alloy - Recolección de logs para Loki (sucesor de Promtail)
+  alloy:
+    image: grafana/alloy:v1.4.3
+    container_name: alloy
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      # Configuración de Alloy
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Logs de Nginx (compartidos con el contenedor nginx)
+      - nginx-logs:/var/log/nginx:ro
+      # Persistencia de posiciones de lectura (equivalente a positions.yaml)
+      - alloy-data:/var/lib/alloy/data
+    ports:
+      - "12345:12345"
+    networks:
+      - proxy
+      - argos-net
+    restart: unless-stopped
+    depends_on:
+      - nginx
+
+volumes:
+  nginx-logs:
+    driver: local
+  alloy-data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge
+  proxy:
+    driver: bridge
+  argos-net:
+    external: true

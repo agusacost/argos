@@ -1,0 +1,87 @@
+groups:
+  - name: host
+    interval: 30s
+    rules:
+      - alert: HostHighCPU
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU alta en el host"
+          description: "CPU al {{ $value | humanize }}% durante más de 5 minutos en {{ $labels.instance }}."
+
+      - alert: HostCriticalCPU
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CPU crítica en el host"
+          description: "CPU al {{ $value | humanize }}% durante más de 2 minutos en {{ $labels.instance }}."
+
+      - alert: HostHighMemory
+        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memoria alta en el host"
+          description: "Memoria al {{ $value | humanize }}% en {{ $labels.instance }}."
+
+      - alert: HostHighDisk
+        expr: 100 * (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|aufs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|aufs"}) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disco lleno en el host"
+          description: "Disco {{ $labels.mountpoint }} al {{ $value | humanize }}% de uso en {{ $labels.instance }}."
+
+      - alert: HostDiskCritical
+        expr: 100 * (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|aufs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|aufs"}) > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disco casi lleno (>95%)"
+          description: "Disco {{ $labels.mountpoint }} al {{ $value | humanize }}% en {{ $labels.instance }}. Acción inmediata requerida."
+
+      - alert: NodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node Exporter caído"
+          description: "No se pueden recolectar métricas del host {{ $labels.instance }}."
+
+  - name: containers
+    interval: 30s
+    rules:
+      - alert: ContainerHighCPU
+        expr: rate(container_cpu_usage_seconds_total{name!="", name!~".*exporter.*"}[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Contenedor con CPU alta"
+          description: "El contenedor {{ $labels.name }} usa {{ $value | humanize }}% de CPU."
+
+      - alert: ContainerHighMemory
+        expr: container_memory_usage_bytes{name!="", name!~".*exporter.*"} / container_spec_memory_limit_bytes{name!="", name!~".*exporter.*"} * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Contenedor con memoria alta"
+          description: "El contenedor {{ $labels.name }} usa {{ $value | humanize }}% del límite de memoria configurado."
+
+      - alert: CAdvisorDown
+        expr: up{job="cadvisor"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "cAdvisor caído"
+          description: "No se pueden recolectar métricas de contenedores en {{ $labels.instance }}."
