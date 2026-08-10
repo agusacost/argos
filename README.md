@@ -13,7 +13,7 @@
 | Sprint | Objetivo | Duración | Estado |
 |--------|----------|----------|--------|
 | **Sprint 1-2 (Migrado)** | Infraestructura base + stack observabilidad | 4 sem | ✅ Completado (migrado de infra-observability) |
-| **Sprint 3** | Base de conocimiento vectorial + RAG | 2-3 sem | ⏳ Pendiente |
+| **Sprint 3** | Base de conocimiento vectorial + RAG | 2-3 sem | ✅ Completado |
 | **Sprint 4** | Orquestación en n8n + API Claude | 3 sem | ⏳ Pendiente |
 | **Sprint 5** | Auto-documentación de incidentes | 2 sem | ⏳ Pendiente |
 | **Sprint 6** | Validación con k6 + despliegue cloud | 2 sem | ⏳ Pendiente |
@@ -105,7 +105,11 @@
 
 - **SQL Server 2022**
   - Credenciales dev: `sa` / `YourStrong@Passw0rd`
-  - Base de datos: `MembresiaDB` (requiere inicialización manual, ver Limitaciones)
+  - Base de datos: `MembresiaDB` (se inicializa automáticamente vía contenedor `db-init`)
+
+- **Qdrant v1.12.4** (Sprint 3)
+  - Puerto: 6333 (REST), 6334 (gRPC)
+  - Colección: `incidentes` (inicializada con `rag/scripts/init_collections.py`)
 
 ---
 
@@ -113,91 +117,81 @@
 
 ### Requisitos previos
 
-1. **Docker + Docker Compose** instalados (versión 20.10+)
-2. **Terraform** instalado (versión 1.0+)
-3. **LocalStack Pro** corriendo en `localhost:4566`
-   ```powershell
-   docker run --rm -d -p 4566:4566 localstack/localstack-pro:latest
-   ```
-4. **PowerShell** (Windows) o Bash (Linux/Mac) para ejecutar provisioning
+1. **Docker + Docker Compose v2.20+** instalados
+2. (Opcional) **Terraform** + **LocalStack Pro** solo si se quiere gestionar la infra simulada de AWS
 
-### Pasos de despliegue
-
-#### 1. Inicializar Terraform
+### Despliegue rápido (recomendado)
 
 ```powershell
-cd D:\DEV\argos\terraform\environments\localstack
-terraform init
+cd D:\DEV\argos
+
+# Una sola vez: crear la red compartida entre stacks
+docker network create argos-net
+
+# Levantar todos los servicios (monitoring + apps + proxy + qdrant)
+docker compose up -d --build
 ```
 
-*Primera vez:* descarga providers AWS y null.
+El compose raíz (`docker-compose.yml`) incluye los 3 stacks vía `include`. El contenedor
+`db-init` inicializa `MembresiaDB` automáticamente y termina; la API espera a que complete.
 
-#### 2. Desplegar infraestructura
+**Duración típica:** 3-5 minutos en primer run (incluye descarga de imágenes y build de la API).
+
+#### Verificar despliegue
 
 ```powershell
-terraform apply
-```
-
-Terraform:
-- Crea EC2 mock en LocalStack
-- Ejecuta provisioning PowerShell que levanta 3 stacks Docker en orden:
-  1. Stack monitoring (prometheus, loki, grafana, alertmanager) — espera 10s
-  2. Stack apps (sqlserver, api)
-  3. Stack proxy (nginx, alloy, exporters) con build previo
-
-**Duración típica:** 5-8 minutos (incluye descarga de imágenes en primer run)
-
-#### 3. Inicializar base de datos (manual)
-
-La base de datos MembresiaDB no persiste entre `down -v` — debe inicializarse manualmente tras el primer deploy:
-
-```powershell
-# Conectar a SQL Server y ejecutar scripts de inicialización
-sqlcmd -S localhost,1433 -U sa -P "YourStrong@Passw0rd" -C
-```
-
-Dentro de sqlcmd:
-```sql
-CREATE DATABASE MembresiaDB;
-GO
-USE MembresiaDB;
-CREATE SCHEMA membresia;
-CREATE TABLE membresia.Usuarios (
-  Id INT PRIMARY KEY IDENTITY(1,1),
-  Nombre NVARCHAR(255) NOT NULL,
-  Email NVARCHAR(255) NOT NULL,
-  Rol NVARCHAR(50),
-  EstadoActivo BIT,
-  UltimoLogin DATETIME2,
-  FechaCreacion DATETIME2 DEFAULT GETUTCDATE()
-);
--- Insertar datos de prueba...
-EXIT
-```
-
-#### 4. Verificar despliegue
-
-```powershell
-# Listar contenedores activos (debe haber ~11 en proyectos argos-*)
-docker ps
+# Ver estado de todos los contenedores
+docker compose ps
 
 # Smoke tests
 curl http://localhost/api/status
-curl http://localhost/api/usuarios?pageNumber=1&pageSize=10
-curl http://localhost:9090/targets          # Prometheus targets
-curl http://localhost:3000                   # Grafana UI
-curl http://localhost:9093                   # Alertmanager
-curl http://localhost:3100/loki/api/v1/label/__name__/values  # Loki labels
+curl "http://localhost/api/usuarios?pageNumber=1&pageSize=10"
+curl http://localhost:9090/targets
+curl http://localhost:3000
+curl http://localhost:9093
+curl http://localhost:6333/readyz
+```
+
+### Despliegue por stack (modo standalone)
+
+Si preferís levantar los stacks por separado (requiere crear argos-net previamente):
+
+```powershell
+docker network create argos-net
+
+# Monitoring (Prometheus, Loki, Grafana, Alertmanager, Qdrant)
+docker compose -p argos-monitoring up -d
+Start-Sleep 10
+
+# Apps (SQL Server, db-init, API)
+docker compose -p argos-apps up -d
+
+# Proxy (Nginx, Alloy, exporters)
+docker compose -p argos-proxy build --quiet
+docker compose -p argos-proxy up -d
 ```
 
 ### Limpieza
 
 ```powershell
-cd D:\DEV\argos\terraform\environments\localstack
-terraform destroy
+# Bajar todos los servicios
+docker compose down
+
+# Bajar y eliminar volúmenes (borra datos de BD, métricas, etc.)
+docker compose down -v
 ```
 
-Destruye EC2 mock y volúmenes Docker (si aplica).
+### (Opcional) Terraform + LocalStack
+
+Solo para gestionar la infraestructura simulada AWS (EC2 mock). **No levanta Docker** por defecto:
+
+```powershell
+cd D:\DEV\argos\terraform\environments\localstack
+terraform init
+terraform apply   # solo gestiona infra LocalStack; Docker se maneja manualmente
+```
+
+Para usar el provisioner Terraform (modo legacy): `terraform apply -var provision_docker=true`
 
 ---
 
@@ -209,6 +203,7 @@ Destruye EC2 mock y volúmenes Docker (si aplica).
 | Prometheus | http://localhost:9090 | — | Métricas, alertas activas |
 | Alertmanager | http://localhost:9093 | — | Enrutamiento alertas |
 | Loki | http://localhost:3100 | — | API logs, sin UI (usar Grafana Explore) |
+| Qdrant | http://localhost:6333 | — | Vector DB; UI en `/dashboard` |
 | API Status | http://localhost/api/status | — | Health check |
 | API Usuarios | http://localhost/api/usuarios | — | Paginación: ?pageNumber=1&pageSize=10 |
 | SQL Server | localhost:1433 | sa / YourStrong@Passw0rd | Conex. externa ADO.NET |
@@ -279,10 +274,9 @@ project_root  = "D:/DEV/argos"
    - Impacto: sin métricas de contenedores (non-critical, node-exporter compensa)
    - Mitigación: documented, target DOWN esperado en Prometheus
 
-2. **MembresiaDB requiere init manual**
-   - Limitación: volumen no persiste entre `down -v`
-   - Workaround: script de init pendiente de automatización en Dockerfile SQL
-   - Impacto: primera vez requiere sqlcmd manual (ver Despliegue)
+2. **MembresiaDB se reinicializa tras `down -v`**
+   - El contenedor `db-init` re-ejecuta `init-db.sql` en cada `docker compose up` (idempotente)
+   - Si se hace `down -v`, el volumen `sqlserver_data` se elimina y la BD se recrea en el siguiente up
 
 3. **SMTP credential n8n NO persiste** (cuando exista n8n en Sprint 4)
    - Limitación: se pierde al `down/up` del stack
@@ -296,7 +290,7 @@ project_root  = "D:/DEV/argos"
 
 ## Roadmap futuro (Sprints 3-6)
 
-- **Sprint 3:** Base vectorial (Qdrant o pgvector) + RAG pipeline
+- **Sprint 3:** ✅ Base vectorial Qdrant + RAG pipeline (`rag/`)
 - **Sprint 4:** Orquestador n8n + integración API Claude + workflows análisis IA
 - **Sprint 5:** Auto-documentación: generar + persistir docs técnicas
 - **Sprint 6:** k6 load testing (tráfico normal, spike, ataque) + validación MTTR + despliegue AWS/GCP

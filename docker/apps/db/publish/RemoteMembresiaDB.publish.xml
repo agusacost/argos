@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <IncludeCompositeObjects>False</IncludeCompositeObjects>
+    <TargetDatabaseName>MembresiaDB</TargetDatabaseName>
+    <DeployScriptFileName>MembresiaDB.sql</DeployScriptFileName>
+    <ProfileVersionNumber>1</ProfileVersionNumber>
+    <TargetConnectionString>Data Source=localhost,1433;Persist Security Info=True;User ID=sa;Password=YourStrong@Passw0rd;Pooling=False;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=True;Application Name=Membresia;Command Timeout=0</TargetConnectionString>
+    <BlockOnPossibleDataLoss>False</BlockOnPossibleDataLoss>
+    <CreateNewDatabase>True</CreateNewDatabase>
+  </PropertyGroup>
+</Project>

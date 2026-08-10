@@ -70,12 +70,26 @@ services:
       - argos-net
     restart: unless-stopped
 
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: argos-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - default
+      - argos-net
+    restart: unless-stopped
+
 volumes:
   prometheus_data: {}
   loki_data: {}
   loki_rules_temp: {}
   grafana_data: {}
   alertmanager_data: {}
+  qdrant_data: {}
 
 networks:
   default:

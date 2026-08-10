@@ -10,12 +10,15 @@
 
 Argos es una plataforma AIOps construida sobre un stack de observabilidad open-source (Prometheus, Loki, Grafana, Alertmanager). Detecta incidentes por umbrales, genera síntesis del problema + pasos de resolución mediante IA (Claude API + RAG), y documenta automáticamente casos no registrados.
 
-**Estado actual:** Sprints 1-2 completados (infra base migrada de `infra-observability`)
+**Estado actual:** Sprints 1-3 completados
 - ✅ Terraform + LocalStack + 3 stacks Docker (monitoring, proxy, apps)
 - ✅ Alertas Prometheus (13) + Loki (5)
 - ✅ Grafana + 3 dashboards
 - ✅ Alloy log collection
-- ⏳ Sprints 3-6: RAG, n8n + Claude API, auto-documentación, k6, cloud
+- ✅ BD MembresiaDB inicializada automáticamente (db-init en docker/apps)
+- ✅ Qdrant + pipeline RAG (`rag/` — embeddings Voyage AI, colección `incidentes`)
+- ✅ Despliegue unificado vía `docker-compose.yml` raíz (desacoplado de Terraform)
+- ⏳ Sprints 4-6: n8n + Claude API, auto-documentación, k6, cloud
 
 ---
 
@@ -23,16 +26,17 @@ Argos es una plataforma AIOps construida sobre un stack de observabilidad open-s
 
 ```
 D:\DEV\argos/
+├── docker-compose.yml                        — Compose raíz (include de 3 stacks)
 ├── docs/
 │   └── Anexoll_Acosta_Juan_Agustin.docx.md  — Propuesta académica
 ├── terraform/
-│   ├── environments/localstack/              — Infraestructura LocalStack
+│   ├── environments/localstack/              — Infraestructura LocalStack (solo EC2 mock)
 │   │   ├── main.tf, variables.tf, outputs.tf
 │   │   ├── providers.tf
 │   │   └── scripts/get_or_create_ami.ps1
-│   └── scripts/                              — Base y provisioning
+│   └── scripts/                              — Base y provisioning (VMs cloud)
 ├── docker/
-│   ├── monitoring/                           — Stack observabilidad
+│   ├── monitoring/                           — Stack observabilidad + Qdrant
 │   │   ├── docker-compose.yml
 │   │   ├── prometheus/ (config + rules)
 │   │   ├── loki/ (config + rules)
@@ -43,9 +47,16 @@ D:\DEV\argos/
 │   │   ├── docker-compose.yml
 │   │   ├── nginx/ (config + Dockerfile)
 │   │   └── alloy/ (log collector config)
-│   └── apps/                                 — API .NET + SQL Server
+│   └── apps/                                 — API .NET + SQL Server + db-init
 │       ├── docker-compose.yml
+│       ├── db/init-db.sql                    — Esquema + SP + seed (idempotente)
 │       └── api/MembresiaAPI/ (.NET 10 Minimal)
+├── rag/                                      — Sprint 3: base de conocimiento + RAG
+│   ├── argos_rag/ (config, models, embeddings, qdrant_store)
+│   ├── scripts/ (init_collections, seed, query_demo)
+│   ├── knowledge/ (5 docs de incidentes conocidos)
+│   ├── requirements.txt
+│   └── .env.example
 ├── k6/                                       — Tests de carga (Sprint 6)
 ├── .gitignore
 ├── README.md                                 — Guía de despliegue
@@ -57,26 +68,27 @@ D:\DEV\argos/
 ## Despliegue local (referencia rápida)
 
 ```powershell
-# 1. Inicializar Terraform
-cd D:\DEV\argos\terraform\environments\localstack
-terraform init
+cd D:\DEV\argos
 
-# 2. Desplegar infraestructura
-terraform apply
+# 1. Crear red compartida (una sola vez)
+docker network create argos-net
 
-# 3. Verificar (después de 5-8 min)
-docker ps  # 11 contenedores en proyectos argos-*
+# 2. Levantar todos los stacks
+docker compose up -d --build
 
-# 4. Smoke tests
+# 3. Verificar
+docker compose ps
 curl http://localhost/api/status
-curl http://localhost:3000  # Grafana
-curl http://localhost:9090  # Prometheus
+curl http://localhost:3000   # Grafana
+curl http://localhost:9090   # Prometheus
+curl http://localhost:6333/readyz  # Qdrant
 ```
 
 ### Limpiar
 
 ```powershell
-terraform destroy
+docker compose down           # bajar servicios
+docker compose down -v        # bajar + borrar volúmenes
 ```
 
 ---

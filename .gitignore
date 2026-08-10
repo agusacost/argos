@@ -62,6 +62,10 @@ __pycache__/
 dist/
 venv/
 env/
+.venv/
+
+# RAG toolkit secrets
+rag/.env
 
 # npm/yarn
 .yarn-cache
@@ -78,3 +82,4 @@ desktop.ini
 *.tmp
 *.swp
 .local/
+graphify-out/

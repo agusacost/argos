@@ -13,8 +13,14 @@ resource "aws_instance" "observability" {
   }
 }
 
-# LocalStack no ejecuta user_data en local — el provisioner levanta los stacks en el host
+# Despliegue Docker desacoplado — por defecto desactivado (provision_docker = false).
+# El deploy se hace manualmente desde la raíz:
+#   docker network create argos-net
+#   docker compose up -d --build
+#
+# Para usar este provisioner: terraform apply -var provision_docker=true
 resource "null_resource" "provision" {
+  count      = var.provision_docker ? 1 : 0
   depends_on = [aws_instance.observability]
 
   provisioner "local-exec" {

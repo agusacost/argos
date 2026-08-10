@@ -1,0 +1,11 @@
+include:
+  - path: docker/monitoring/docker-compose.yml
+  - path: docker/apps/docker-compose.yml
+  - path: docker/proxy/docker-compose.yml
+
+# argos-net es creada manualmente como prerequisito:
+#   docker network create argos-net
+# Todos los stacks hijos la declaran como external: true.
+networks:
+  argos-net:
+    external: true

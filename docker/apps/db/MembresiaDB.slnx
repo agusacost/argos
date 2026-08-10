@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="MembresiaDB.sqlproj">
+    <Build />
+    <Deploy />
+  </Project>
+</Solution>
