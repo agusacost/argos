@@ -1,0 +1,624 @@
+[
+  {
+    "id": "argos-alert-analysis",
+    "name": "Argos — Alert Analysis & Resolution",
+    "active": false,
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "nodes": [
+      {
+        "id": "webhook-argos-alerts",
+        "name": "Webhook Alertmanager",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -80,
+          300
+        ],
+        "webhookId": "argos-alerts",
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "argos-alerts",
+          "responseMode": "onReceived",
+          "responseCode": 200,
+          "options": {}
+        }
+      },
+      {
+        "id": "prepare-alert",
+        "name": "Prepare",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          160,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Payload de Alertmanager. Aplica el umbral: si no se supera, devuelve [] y corta el flujo.\nconst body = ($input.first().json.body) || $input.first().json || {};\nconst alerts = Array.isArray(body.alerts) ? body.alerts : [];\nconst threshold = parseInt($env.ALERT_THRESHOLD || '3', 10);\nconst hasCritical = alerts.some(a => a.labels && a.labels.severity === 'critical');\nconst triggered = alerts.length >= threshold || hasCritical;\nif (!triggered) {\n  return [];\n}\nconst first = alerts[0] || {};\nconst ann = body.commonAnnotations || first.annotations || {};\nconst labels = body.commonLabels || first.labels || {};\nconst summary = ann.summary || labels.alertname || 'Alerta sin resumen';\nconst description = ann.description || '';\nconst alertname = labels.alertname || (first.labels && first.labels.alertname) || 'unknown';\nconst severity = labels.severity || (first.labels && first.labels.severity) || 'warning';\nreturn [{ json: {\n  summary,\n  description,\n  alertname,\n  severity,\n  alertsCount: alerts.length,\n  status: body.status || 'firing'\n} }];"
+        }
+      },
+      {
+        "id": "get-config",
+        "name": "Get Config",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          400,
+          300
+        ],
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput",
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/internal/config",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Argos-Token",
+                "value": "={{ $env.ARGOS_INTERNAL_TOKEN || '' }}"
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "rag-query",
+        "name": "RAG Query",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          640,
+          300
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/query",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { \"text\": ($('Prepare').item.json.summary + '. ' + $('Prepare').item.json.description), \"top_k\": 3 } }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "build-prompt",
+        "name": "Build Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          880,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Combina la alerta (nodo Prepare) con el contexto RAG para armar el prompt del modelo LLM.\nconst prep = $('Prepare').item.json;\nconst rag = $json || {};\nconst results = Array.isArray(rag.results) ? rag.results.slice(0, 3) : [];\nconst contextLines = results.map((r, i) =>\n  `${i + 1}. [score ${Number(r.score).toFixed(3)} · ${r.clasificacion}] ${r.tipo_alerta}: ${r.resumen}\\n   Pasos: ${(r.pasos || []).join(' | ')}`\n).join('\\n');\nconst system = 'Sos un analista de AIOps. Dado el contexto de una alerta y datos históricos de incidentes, sintetizá el problema en términos técnicos claros y proponé pasos de resolución accionables y numerados. Sé conciso. Respondé en español. Si el contexto histórico aplica, referencialo.';\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\nContexto histórico (RAG, documentado=${rag.is_documented}):\\n${contextLines || 'Sin coincidencias relevantes.'}\\n\\nSintetizá el problema y proponé pasos de resolución.`;\nreturn [{ json: { system, user, prep, is_documented: !!rag.is_documented } }];"
+        }
+      },
+      {
+        "id": "route-llm",
+        "name": "Route LLM",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1120,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Selecciona proveedor LLM según LLM_PROVIDER (gemini | anthropic) y construye la request.\n// Config de runtime del dashboard (nodo Get Config); si falló, fallback a env.\nconst cfg = $('Get Config').item.json || {};\nconst provider = (cfg.llm_provider || $env.LLM_PROVIDER || 'gemini').toLowerCase();\nconst { system, user } = $json;\nlet url, xApiKey, anthropicVersion, body;\nif (provider === 'gemini') {\n  const model = (provider === cfg.llm_provider && cfg.llm_model) || $env.GEMINI_MODEL || 'gemini-flash-latest';\n  const key = $env.GEMINI_API_KEY || '';\n  url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key;\n  xApiKey = '';\n  anthropicVersion = '';\n  body = {\n    system_instruction: { parts: [{ text: system }] },\n    contents: [{ role: 'user', parts: [{ text: user }] }],\n    generationConfig: { maxOutputTokens: 4096 } // gemini-flash-latest es thinking: los thoughts consumen este presupuesto\n  };\n} else {\n  url = 'https://api.anthropic.com/v1/messages';\n  const model = (provider === cfg.llm_provider && cfg.llm_model) || $env.CLAUDE_MODEL || 'claude-sonnet-4-6';\n  xApiKey = $env.ANTHROPIC_API_KEY || '';\n  anthropicVersion = '2023-06-01';\n  body = {\n    model,\n    max_tokens: 1024,\n    system,\n    messages: [{ role: 'user', content: user }]\n  };\n}\nreturn [{ json: { _provider: provider, _url: url, _x_api_key: xApiKey, _anthropic_version: anthropicVersion, _body: body } }];"
+        }
+      },
+      {
+        "id": "llm-call",
+        "name": "LLM Call",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1360,
+          300
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000,
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json._url }}",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-api-key",
+                "value": "={{ $json._x_api_key }}"
+              },
+              {
+                "name": "anthropic-version",
+                "value": "={{ $json._anthropic_version }}"
+              },
+              {
+                "name": "content-type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json._body }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "parse-response",
+        "name": "Parse",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1600,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Extrae el texto según el proveedor: Gemini (candidates[]) o Anthropic (content[]).\nconst resp = $json || {};\nlet text;\nif (Array.isArray(resp.candidates)) {\n  text = (resp.candidates[0]?.content?.parts?.[0]?.text || '').trim() || 'Sin respuesta del modelo.';\n} else if (Array.isArray(resp.content)) {\n  const blocks = resp.content;\n  text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\\n').trim() || 'Sin respuesta del modelo.';\n} else {\n  text = 'Sin respuesta del modelo.';\n}\nconst bp = $('Build Prompt').item.json;\nconst prep = bp.prep;\nconst isNew = bp.is_documented === false;\nconst autoDoc = ($('Get Config').item.json || {}).auto_doc_enabled !== false;\nconst badgeText = autoDoc ? '🆕 Incidente nuevo — auto-documentado por Argos' : '🆕 Incidente nuevo — pendiente de documentar (auto-documentación desactivada)';\nconst badge = isNew ? `<p style=\"color:#b45309\"><strong>${badgeText}</strong></p>` : '';\nconst html = `<h2>[ALERTA] ${prep.alertname} — ${prep.severity}</h2>` + badge +\n  `<p><strong>Resumen:</strong> ${prep.summary}</p>` +\n  `<pre style=\"white-space:pre-wrap;font-family:inherit\">${text}</pre>` +\n  `<hr><small>Generado por Argos (n8n + IA).</small>`;\nreturn [{ json: { analysis: text, html, alertname: prep.alertname, severity: prep.severity, summary: prep.summary, is_documented: bp.is_documented } }];"
+        }
+      },
+      {
+        "id": "is-new",
+        "name": "Is New?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          1840,
+          300
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "typeValidation": "loose"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "cond-is-new",
+                "leftValue": "={{ $json.is_documented === false }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "auto-doc",
+        "name": "Auto Doc?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          2080,
+          460
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "typeValidation": "loose"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "cond-auto-doc",
+                "leftValue": "={{ ($('Get Config').item.json || {}).auto_doc_enabled !== false }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "build-pending-incident",
+        "name": "Build Pending Incident",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3040,
+          660
+        ],
+        "parameters": {
+          "jsCode": "// Auto-documentación desactivada en el dashboard: se registra el incidente NUEVO sin documento\n// (estado 'nuevo') para documentarlo a mano desde el dashboard ('Generar documentación').\nconst prep = $('Build Prompt').item.json.prep;\nconst incident = {\n  tipo_alerta: prep.alertname,\n  resumen: prep.summary,\n  pasos: [],\n  severity: prep.severity,\n  fuente: 'alertmanager',\n  estado: 'nuevo',\n  detected_at: new Date().toISOString()\n};\nreturn [{ json: { incident } }];"
+        }
+      },
+      {
+        "id": "build-doc-prompt",
+        "name": "Build Doc Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2320,
+          460
+        ],
+        "parameters": {
+          "jsCode": "// Incidente NUEVO (sin match en la KB): arma el prompt para generar documentación técnica.\nconst prep = $('Build Prompt').item.json.prep;\nconst system = 'Sos un ingeniero SRE documentando un incidente NUEVO para la base de conocimiento de Argos. Generá documentación técnica concisa en Markdown con estas secciones exactas: \"# Título\", \"## Descripción\", \"## Causa raíz probable\", \"## Pasos de resolución\" (lista numerada), \"## Prevención\". Respondé en español y devolvé SOLO el Markdown, sin texto adicional.';\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\nEste incidente NO existe en la base de conocimiento de Argos. Generá su documentación técnica completa.`;\nreturn [{ json: { system, user } }];"
+        }
+      },
+      {
+        "id": "route-doc-llm",
+        "name": "Route Doc LLM",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2560,
+          460
+        ],
+        "parameters": {
+          "jsCode": "// Mismo ruteo dual-provider que 'Route LLM', reutilizado para la generación de documentación.\n// Config de runtime del dashboard (nodo Get Config); si falló, fallback a env.\nconst cfg = $('Get Config').item.json || {};\nconst provider = (cfg.llm_provider || $env.LLM_PROVIDER || 'gemini').toLowerCase();\nconst { system, user } = $json;\nlet url, xApiKey, anthropicVersion, body;\nif (provider === 'gemini') {\n  const model = (provider === cfg.llm_provider && cfg.llm_model) || $env.GEMINI_MODEL || 'gemini-flash-latest';\n  const key = $env.GEMINI_API_KEY || '';\n  url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key;\n  xApiKey = '';\n  anthropicVersion = '';\n  body = {\n    system_instruction: { parts: [{ text: system }] },\n    contents: [{ role: 'user', parts: [{ text: user }] }],\n    generationConfig: { maxOutputTokens: 6144 } // incluye thinking tokens (con 1536 el doc salía truncado)\n  };\n} else {\n  url = 'https://api.anthropic.com/v1/messages';\n  const model = (provider === cfg.llm_provider && cfg.llm_model) || $env.CLAUDE_MODEL || 'claude-sonnet-4-6';\n  xApiKey = $env.ANTHROPIC_API_KEY || '';\n  anthropicVersion = '2023-06-01';\n  body = {\n    model,\n    max_tokens: 1536,\n    system,\n    messages: [{ role: 'user', content: user }]\n  };\n}\nreturn [{ json: { _provider: provider, _url: url, _x_api_key: xApiKey, _anthropic_version: anthropicVersion, _body: body } }];"
+        }
+      },
+      {
+        "id": "doc-llm-call",
+        "name": "Doc LLM Call",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2800,
+          460
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000,
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json._url }}",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-api-key",
+                "value": "={{ $json._x_api_key }}"
+              },
+              {
+                "name": "anthropic-version",
+                "value": "={{ $json._anthropic_version }}"
+              },
+              {
+                "name": "content-type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json._body }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "parse-doc",
+        "name": "Parse Doc",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3040,
+          460
+        ],
+        "parameters": {
+          "jsCode": "// Extrae el Markdown generado y arma el payload de incidente para persistir en el RAG.\nconst resp = $json || {};\nlet text;\nif (Array.isArray(resp.candidates)) {\n  text = (resp.candidates[0]?.content?.parts?.[0]?.text || '').trim();\n} else if (Array.isArray(resp.content)) {\n  text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('\\n').trim();\n} else {\n  text = '';\n}\nconst prep = $('Build Prompt').item.json.prep;\nconst incident = {\n  tipo_alerta: prep.alertname,\n  resumen: prep.summary,\n  pasos: [],\n  documento: text || 'Sin documentación generada.',\n  severity: prep.severity,\n  fuente: 'auto-generado',\n  estado: 'auto_documentado',\n  detected_at: new Date().toISOString()\n};\nreturn [{ json: { incident } }];"
+        }
+      },
+      {
+        "id": "persist-incident",
+        "name": "Persist Incident",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3280,
+          460
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000,
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/upsert",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.incident }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "get-recipients",
+        "name": "Get Recipients",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3540,
+          300
+        ],
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput",
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/notifications/recipients",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Argos-Token",
+                "value": "={{ $env.ARGOS_INTERNAL_TOKEN || '' }}"
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "resolve-recipients",
+        "name": "Resolve Recipients",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3780,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Pool configurado en el dashboard (rag-api /notifications/recipients). Si viene vacío o la\n// llamada falló (onError=continue), fallback a ALERT_RECIPIENT_EMAIL para no perder la alerta.\nconst list = Array.isArray($json.recipients) ? $json.recipients.filter(Boolean) : [];\nconst to = list.length ? list.join(', ') : ($env.ALERT_RECIPIENT_EMAIL || '');\nif (!to) {\n  throw new Error('Sin destinatarios configurados (pool vacío y ALERT_RECIPIENT_EMAIL sin definir)');\n}\nreturn [{ json: { to, recipients_source: list.length ? 'pool' : 'env', recipients_count: list.length || 1 } }];"
+        }
+      },
+      {
+        "id": "send-email",
+        "name": "Notify Email",
+        "type": "n8n-nodes-base.emailSend",
+        "typeVersion": 2.1,
+        "position": [
+          4020,
+          300
+        ],
+        "parameters": {
+          "fromEmail": "={{ $env.SMTP_SENDER || 'observabilidad@example.com' }}",
+          "toEmail": "={{ $json.to }}",
+          "subject": "=[ALERTA] {{ $('Parse').item.json.alertname }} — {{ $('Parse').item.json.severity }}",
+          "emailFormat": "html",
+          "html": "={{ $('Parse').item.json.html }}",
+          "options": {}
+        },
+        "credentials": {
+          "smtp": {
+            "id": "m0MAUGNKirRpuLWP",
+            "name": "SMTP account"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Webhook Alertmanager": {
+        "main": [
+          [
+            {
+              "node": "Prepare",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare": {
+        "main": [
+          [
+            {
+              "node": "Get Config",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "RAG Query": {
+        "main": [
+          [
+            {
+              "node": "Build Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Prompt": {
+        "main": [
+          [
+            {
+              "node": "Route LLM",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route LLM": {
+        "main": [
+          [
+            {
+              "node": "LLM Call",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "LLM Call": {
+        "main": [
+          [
+            {
+              "node": "Parse",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse": {
+        "main": [
+          [
+            {
+              "node": "Is New?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Is New?": {
+        "main": [
+          [
+            {
+              "node": "Auto Doc?",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Get Recipients",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Doc Prompt": {
+        "main": [
+          [
+            {
+              "node": "Route Doc LLM",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Doc LLM": {
+        "main": [
+          [
+            {
+              "node": "Doc LLM Call",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Doc LLM Call": {
+        "main": [
+          [
+            {
+              "node": "Parse Doc",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Doc": {
+        "main": [
+          [
+            {
+              "node": "Persist Incident",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Persist Incident": {
+        "main": [
+          [
+            {
+              "node": "Get Recipients",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Recipients": {
+        "main": [
+          [
+            {
+              "node": "Resolve Recipients",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Resolve Recipients": {
+        "main": [
+          [
+            {
+              "node": "Notify Email",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Config": {
+        "main": [
+          [
+            {
+              "node": "RAG Query",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Auto Doc?": {
+        "main": [
+          [
+            {
+              "node": "Build Doc Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Build Pending Incident",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Pending Incident": {
+        "main": [
+          [
+            {
+              "node": "Persist Incident",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  }
+]
