@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Autofac" Version="9.3.3" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Argos.Common\Argos.Common.csproj" />
+    <ProjectReference Include="..\Argos.Entities\Argos.Entities.csproj" />
+    <ProjectReference Include="..\Argos.Repository\Argos.Repository.csproj" />
+  </ItemGroup>
+
+</Project>

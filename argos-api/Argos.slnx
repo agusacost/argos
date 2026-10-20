@@ -3,5 +3,6 @@
     <Project Path="Argos.Common/Argos.Common.csproj" />
     <Project Path="Argos.Entities/Argos.Entities.csproj" />
     <Project Path="Argos.Repository/Argos.Repository.csproj" />
+    <Project Path="Argos.Business/Argos.Business.csproj" />
   </Folder>
 </Solution>
