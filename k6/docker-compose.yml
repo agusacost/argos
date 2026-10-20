@@ -1,0 +1,29 @@
+# Stack de pruebas de carga k6 (Sprint 6)
+#
+# Corre dentro de argos-net, por lo que el target es el hostname interno
+# del reverse proxy: http://nginx-proxy (puerto 80), NO http://localhost.
+#
+# Uso:
+#   docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/normal-traffic.json /tests/normal-traffic.js
+#   docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/spike-traffic.json  /tests/spike-traffic.js
+#   docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/attack-pattern.json /tests/attack-pattern.js
+#
+# Para apuntar a otra URL (p.ej. host nativo): -e BASE_URL=http://host.docker.internal
+
+services:
+  k6:
+    image: grafana/k6:latest
+    container_name: argos-k6
+    environment:
+      - BASE_URL=${BASE_URL:-http://nginx-proxy}
+    volumes:
+      - ./tests:/tests:ro
+      - ./data:/data:ro
+      - ./results:/results
+    networks:
+      - argos-net
+    # entrypoint por defecto de la imagen es "k6"; el subcomando se pasa en la línea de comandos
+
+networks:
+  argos-net:
+    external: true
