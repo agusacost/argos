@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="Argos.Common/Argos.Common.csproj" />
+    <Project Path="Argos.Entities/Argos.Entities.csproj" />
   </Folder>
 </Solution>
