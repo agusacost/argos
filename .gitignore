@@ -49,23 +49,19 @@ appsettings.*.json
 
 # k6 results
 k6/results/*.json
+k6/results/*.log
+!k6/results/.gitkeep
 
 # node_modules (if any)
 node_modules/
 package-lock.json
 pnpm-lock.yaml
 
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
+# Builds del dashboard
 dist/
-venv/
-env/
-.venv/
 
-# RAG toolkit secrets
-rag/.env
+# Visual Studio / Rider
+.vs/
 
 # npm/yarn
 .yarn-cache
