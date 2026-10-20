@@ -83,6 +83,130 @@ services:
       - argos-net
     restart: unless-stopped
 
+  # Argos API (.NET 10): RAG de incidentes, auth, configuración, observabilidad, auto-doc con LLM y k6.
+  # Responde como `rag-api:8000` (alias de red) para el dashboard (nginx /api) y n8n.
+  # Tras recrear este contenedor: `docker restart argos-dashboard` (su nginx cachea la IP de rag-api).
+  argos-api:
+    build: ../../argos-api
+    image: argos-api:dev
+    container_name: argos-rag-api
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD:-0.63}
+      - PROMETHEUS_URL=http://prometheus:9090
+      - LOKI_URL=http://loki:3100
+      - JWT_SECRET=${JWT_SECRET:-argos-dev-secret-change-in-production}
+      - ARGOS_ADMIN_EMAIL=${ARGOS_ADMIN_EMAIL:-admin@argos.local}
+      - ARGOS_ADMIN_PASSWORD=${ARGOS_ADMIN_PASSWORD:-argos-admin-2026}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - ARGOS_AUTO_SEED=${ARGOS_AUTO_SEED:-true}
+      - ARGOS_SEED_DEMO=${ARGOS_SEED_DEMO:-true}
+      # Secreto para GET /notifications/recipients (pool de emails de alertas, consumido por n8n)
+      - ARGOS_INTERNAL_TOKEN=${ARGOS_INTERNAL_TOKEN:-}
+      # Pruebas de carga k6 on-demand: la API lanza el contenedor grafana/k6 como hermano
+      - K6_IMAGE=${K6_IMAGE:-grafana/k6:latest}
+      - K6_NETWORK=argos-net
+      - K6_SCRIPTS_VOLUME=argos_k6_scripts
+      - K6_RESULTS_VOLUME=argos_k6_results
+      - K6_DEFAULT_BASE_URL=${K6_DEFAULT_BASE_URL:-http://nginx-proxy}
+    ports:
+      - "8000:8000"
+    volumes:
+      # Socket Docker: permite lanzar el contenedor k6 (solo rol Admin dispara)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Fuente canónica de los scripts (solo lectura) para visualizar código + copiar al volumen
+      - ../../k6/tests:/app/k6_tests:ro
+      # Datasets de los scripts (payloads.json del escenario de ataque) → k6 los ve en /data
+      - ../../k6/data:/app/k6_data:ro
+      # Volúmenes compartidos con el contenedor k6 hermano (resueltos por nombre)
+      - k6_scripts:/app/k6_scripts
+      - k6_results:/app/k6_results
+    depends_on:
+      - qdrant
+    networks:
+      default:
+        aliases: [rag-api]
+      argos-net:
+        aliases: [rag-api]
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:1.70.3
+    container_name: argos-n8n
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - DB_TYPE=sqlite
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=America/Argentina/Buenos_Aires
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_RUNNERS_ENABLED=true
+      # Passthrough consumido por el workflow Alert Analysis (Route LLM)
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - RAG_API_URL=${RAG_API_URL:-http://rag-api:8000}
+      - ALERT_THRESHOLD=${ALERT_THRESHOLD:-3}
+      # Fallback: el pool de destinatarios se lee de rag-api (/notifications/recipients)
+      - ALERT_RECIPIENT_EMAIL=${ALERT_RECIPIENT_EMAIL}
+      - ARGOS_INTERNAL_TOKEN=${ARGOS_INTERNAL_TOKEN:-}
+      # SMTP para el nodo de email (reutiliza credenciales de Alertmanager)
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_SENDER=${SMTP_FROM}
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    depends_on:
+      - argos-api
+    healthcheck:
+      # 127.0.0.1 (no 'localhost'): dentro del contenedor localhost resuelve a ::1 (IPv6)
+      # y n8n bindea IPv4 → connection refused. Forzar IPv4 evita falsos "unhealthy".
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - default
+      - argos-net
+    restart: unless-stopped
+
+  dashboard:
+    build: ../../dashboard
+    container_name: argos-dashboard
+    # nginx del contenedor sirve la SPA y proxya /api -> http://rag-api:8000 (mismo argos-net),
+    # evitando CORS. Ver dashboard/nginx.conf.
+    ports:
+      - "${DASHBOARD_PORT:-3001}:80"
+    depends_on:
+      - argos-api
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - default
+      - argos-net
+    restart: unless-stopped
+
 volumes:
   prometheus_data: {}
   loki_data: {}
@@ -90,6 +214,12 @@ volumes:
   grafana_data: {}
   alertmanager_data: {}
   qdrant_data: {}
+  n8n_data: {}
+  # Nombres fijos para que el SDK docker los referencie sin prefijo de proyecto
+  k6_scripts:
+    name: argos_k6_scripts
+  k6_results:
+    name: argos_k6_results
 
 networks:
   default:

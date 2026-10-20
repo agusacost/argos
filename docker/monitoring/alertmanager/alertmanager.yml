@@ -9,10 +9,20 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
+    # ─── Camino inteligente (Sprint 4): las alertas de incidente van a n8n ───────
+    # Estas alertas activan el flujo RAG → Claude → notificación enriquecida.
+    # No se emiten por email desde Alertmanager para evitar doble notificación:
+    # el email final (con síntesis + pasos) lo envía el workflow de n8n.
+    - matchers:
+        - alertname =~ "NginxHighErrorRate|NginxCriticalErrorRate|NginxHighResponseTime|NginxSuspiciousIPActivity|NginxErrorLogSpike"
+      receiver: webhook-n8n
+      group_wait: 30s
+      repeat_interval: 1h
     - matchers:
         - severity = critical
-      receiver: email-critical
+      receiver: webhook-n8n
       repeat_interval: 1h
+    # ─── Resto de alertas: email tradicional ─────────────────────────────────────
     - matchers:
         - severity = warning
       receiver: email-default
@@ -22,6 +32,11 @@ route:
 
 receivers:
   - name: null-receiver
+
+  - name: webhook-n8n
+    webhook_configs:
+      - url: http://n8n:5678/webhook/argos-alerts
+        send_resolved: true
 
   - name: email-default
     email_configs:
