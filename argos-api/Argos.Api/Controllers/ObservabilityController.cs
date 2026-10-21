@@ -1,9 +1,11 @@
 using Argos.Business.Services.Observability;
 using Argos.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Argos.Api.Controllers;
 
+[Authorize]
 [Route("observability")]
 public sealed class ObservabilityController(IPlatformHealthService health, INginxMetricsService nginx) : ArgosControllerBase
 {

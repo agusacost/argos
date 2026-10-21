@@ -14,8 +14,8 @@ public interface IIncidentService
     /// <summary>404 si no existe.</summary>
     Task<Incident> GetAsync(string incidentId);
 
-    /// <summary>Aplica el PATCH del dashboard y lo audita si hay usuario autenticado.</summary>
-    Task<Incident> UpdateAsync(string incidentId, IncidentPatchRequest patch, CurrentUser? currentUser);
+    /// <summary>Aplica el PATCH del dashboard y lo audita con el usuario autenticado.</summary>
+    Task<Incident> UpdateAsync(string incidentId, IncidentPatchRequest patch, CurrentUser currentUser);
 
     /// <summary>Genera la documentación con el LLM, la guarda (estado auto_documentado) y lo audita.</summary>
     Task<Incident> GenerateDocumentationAsync(string incidentId, CurrentUser currentUser);

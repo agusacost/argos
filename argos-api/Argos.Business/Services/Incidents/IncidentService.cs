@@ -45,16 +45,13 @@ public sealed class IncidentService(
     public async Task<Incident> GetAsync(string incidentId) =>
         await incidents.GetByIdAsync(incidentId) ?? throw new NotFoundException(NotFoundDetail);
 
-    public async Task<Incident> UpdateAsync(string incidentId, IncidentPatchRequest patch, CurrentUser? currentUser)
+    public async Task<Incident> UpdateAsync(string incidentId, IncidentPatchRequest patch, CurrentUser currentUser)
     {
         var incident = await GetAsync(incidentId);
         incident.ApplyChanges(patch.Estado, patch.ResolvedAt, patch.Documento, patch.Pasos);
         await incidents.UpdateAsync(incident);
-        if (currentUser is not null)
-        {
-            var action = !string.IsNullOrEmpty(patch.Estado) ? $"Estado actualizado a '{patch.Estado}'" : "Campos actualizados";
-            await audit.RecordAsync(incidentId, currentUser.Email, action);
-        }
+        var action = !string.IsNullOrEmpty(patch.Estado) ? $"Estado actualizado a '{patch.Estado}'" : "Campos actualizados";
+        await audit.RecordAsync(incidentId, currentUser.Email, action);
         return incident;
     }
 

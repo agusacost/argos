@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Argos.Api.Controllers;
 
+[Authorize]
 [Route("incidents")]
 public sealed class IncidentsController(IIncidentService incidents, IAuditService audit) : ArgosControllerBase
 {
@@ -32,13 +33,13 @@ public sealed class IncidentsController(IIncidentService incidents, IAuditServic
     [HttpGet("{incidentId}")]
     public Task<Incident> Get(string incidentId) => incidents.GetAsync(incidentId);
 
-    /// <summary>Cambios desde el dashboard; se auditan si el request trae un token válido.</summary>
+    /// <summary>Cambios desde el dashboard; se auditan con el usuario del token.</summary>
     [HttpPatch("{incidentId}")]
     public Task<Incident> Update(string incidentId, IncidentPatchRequest request) =>
-        incidents.UpdateAsync(incidentId, request, AuthenticatedUser);
+        incidents.UpdateAsync(incidentId, request, RequiredUser);
 
-    /// <summary>Genera la documentación técnica con el LLM y la guarda en el incidente.</summary>
-    [Authorize]
+    /// <summary>Genera la documentación técnica con el LLM y la guarda en el incidente (solo Admin, como en la UI).</summary>
+    [Authorize(Roles = UserRoles.Admin)]
     [HttpPost("{incidentId}/document")]
     public Task<Incident> Document(string incidentId) => incidents.GenerateDocumentationAsync(incidentId, RequiredUser);
 
