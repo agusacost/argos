@@ -31,3 +31,17 @@ en `docker/monitoring/docker-compose.yml`.
 docker compose -p argos-platform -f docker-compose.yml up -d --build argos-dashboard
 # http://localhost:3001
 ```
+
+## Tests E2E (Playwright)
+
+Corren contra el stack real (`docker compose up -d`) en `http://localhost:3001`.
+
+```bash
+npx playwright install chromium   # una vez
+npm run test:e2e                  # API + UI, sin LLM ni k6
+npm run test:e2e:full             # + @llm (Gemini) y @k6 (corrida normal + stop)
+npx playwright show-report
+```
+
+Variables: `E2E_BASE_URL`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`. Funcionalidades cubiertas en
+`docs/FUNCIONALIDADES_DASHBOARD.md`; fallas conocidas en `docs/FIXES_DASHBOARD.md`.
