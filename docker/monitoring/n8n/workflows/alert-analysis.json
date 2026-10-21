@@ -79,6 +79,16 @@
         "parameters": {
           "method": "POST",
           "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/query",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Argos-Token",
+                "value": "={{ $env.ARGOS_INTERNAL_TOKEN || '' }}"
+              }
+            ]
+          },
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ { \"text\": ($('Prepare').item.json.summary + '. ' + $('Prepare').item.json.description), \"top_k\": 3 } }}",
@@ -333,6 +343,16 @@
         "parameters": {
           "method": "POST",
           "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/upsert",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Argos-Token",
+                "value": "={{ $env.ARGOS_INTERNAL_TOKEN || '' }}"
+              }
+            ]
+          },
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ $json.incident }}",

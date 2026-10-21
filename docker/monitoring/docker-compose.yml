@@ -105,7 +105,8 @@ services:
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
       - ARGOS_AUTO_SEED=${ARGOS_AUTO_SEED:-true}
       - ARGOS_SEED_DEMO=${ARGOS_SEED_DEMO:-true}
-      # Secreto para GET /notifications/recipients (pool de emails de alertas, consumido por n8n)
+      # Secreto (header X-Argos-Token) de los endpoints internos que usa n8n: /query, /upsert,
+      # /internal/config y /notifications/recipients
       - ARGOS_INTERNAL_TOKEN=${ARGOS_INTERNAL_TOKEN:-}
       # Pruebas de carga k6 on-demand: la API lanza el contenedor grafana/k6 como hermano
       - K6_IMAGE=${K6_IMAGE:-grafana/k6:latest}
@@ -114,7 +115,8 @@ services:
       - K6_RESULTS_VOLUME=argos_k6_results
       - K6_DEFAULT_BASE_URL=${K6_DEFAULT_BASE_URL:-http://nginx-proxy}
     ports:
-      - "8000:8000"
+      # Solo loopback: el dashboard y n8n llegan por argos-net (rag-api:8000); el host lo usa `vite dev`.
+      - "127.0.0.1:8000:8000"
     volumes:
       # Socket Docker: permite lanzar el contenedor k6 (solo rol Admin dispara)
       - /var/run/docker.sock:/var/run/docker.sock
