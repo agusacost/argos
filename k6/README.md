@@ -16,6 +16,7 @@ específico 3 de la propuesta (tráfico normal, picos de carga y patrones de ata
 | `tests/normal-traffic.js` | 10 VUs, 5 min | Línea base: el flujo Argos **no** se dispara (sin falsos positivos). |
 | `tests/spike-traffic.js` | pico a 100 VUs | Dispara alertas de latencia → Argos propone escalado. |
 | `tests/attack-pattern.js` | ~50 VUs atacando + fondo legítimo | Paths 404, UA vacío, IPs rotativas → alertas de error rate / IP sospechosa → auto-doc. |
+| `tests/flood-traffic.js` | 20 → 80 → 20 req/s | HTTP flood (DDoS L7, una sola IP de origen): volumen sostenido sobre `/api/usuarios` muy por encima del rate limit de nginx (30r/s) → corta con 429 → alertas de IP sospechosa / spike del error.log. |
 
 Todos apuntan por defecto al reverse proxy interno `http://nginx-proxy` (dentro de `argos-net`).
 Override con `-e BASE_URL=...` si se corre contra otra URL.
@@ -28,6 +29,7 @@ cd D:\DEV\argos
 docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/normal-traffic.json /tests/normal-traffic.js
 docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/spike-traffic.json  /tests/spike-traffic.js
 docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/attack-pattern.json /tests/attack-pattern.js
+docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/flood-traffic.json  /tests/flood-traffic.js
 ```
 
 Los JSON quedan en `k6/results/` (ignorados por git).

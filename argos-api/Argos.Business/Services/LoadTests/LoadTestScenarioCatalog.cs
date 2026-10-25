@@ -2,7 +2,7 @@ using Argos.Entities;
 
 namespace Argos.Business.Services.LoadTests;
 
-/// <summary>Los 3 escenarios de k6 (scripts en k6/tests).</summary>
+/// <summary>Los 4 escenarios de k6 (scripts en k6/tests).</summary>
 public sealed class LoadTestScenarioCatalog : ILoadTestScenarioCatalog
 {
     public IReadOnlyList<LoadTestScenario> All { get; } =
@@ -33,6 +33,15 @@ public sealed class LoadTestScenarioCatalog : ILoadTestScenarioCatalog
             Perfil = "5 VUs base + 50 VUs atacando (min 1–4)",
             DuracionAprox = "~5 min",
             Archivo = "attack-pattern.js",
+        },
+        new()
+        {
+            Id = "flood",
+            Name = "HTTP flood",
+            Descripcion = "Volumen sostenido de GETs legítimos muy por encima del rate limit de nginx (30r/s). Valida que el límite corte con 429 (no 503) antes de llegar a la API/SQL Server y que se detecte por volumen (IP sospechosa / spike del error.log), no por contenido.",
+            Perfil = "20 req/s (base) → 80 req/s (flood) → 20 req/s",
+            DuracionAprox = "~3 min",
+            Archivo = "flood-traffic.js",
         },
     ];
 

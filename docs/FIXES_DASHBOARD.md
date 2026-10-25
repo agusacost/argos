@@ -19,6 +19,22 @@ en vivo).
 Prioridad: **Alta** = seguridad o pérdida de datos · **Media** = la funcionalidad no hace lo que promete ·
 **Baja** = cosmético / deuda.
 
+### Nuevo escenario k6: `flood` (HTTP flood / DDoS L7) · 2026-10-25
+
+Cuarto escenario on-demand (`k6/tests/flood-traffic.js`, registrado en `LoadTestScenarioCatalog`): volumen
+sostenido de GETs legítimos (sin paths/headers maliciosos) a `/api/usuarios`, muy por encima del rate limit de
+nginx (20→80→20 req/s vs. 30r/s por IP). Valida que `limit_req`/`limit_conn` corten con **429** (no 503) antes
+de llegar a la API/SQL Server. **Validado E2E:** 8099 requests, 3027 cortados con 429 (37%), 0 errores 5xx,
+p95 1.86ms sobre lo que sí pasó — el backend nunca se degrada, el rate limit hace su trabajo.
+
+**Gaps de detección pendientes de definir con el equipo** (no implementados, solo documentados):
+- **Escaneo de vulnerabilidades:** hoy no hay una alerta específica para un barrido de paths/puertos; se
+  solapa parcialmente con `NginxSuspiciousIPActivity` (umbral por volumen), pero un escaneo lento/distribuido
+  no lo dispara.
+- **Inyección (SQLi/XSS/path traversal):** no hay detección por contenido del request (WAF/firma); solo se
+  vería si el intento produce 4xx/5xx en volumen suficiente para las alertas existentes. Agregar esto requeriría
+  un WAF (ModSecurity/Coraza) delante de nginx o reglas Loki por patrón en el access log.
+
 ---
 
 ## Alta

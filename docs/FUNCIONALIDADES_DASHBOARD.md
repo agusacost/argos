@@ -74,7 +74,7 @@ Columna **ID** = identificador usado en la suite E2E (`dashboard/e2e/`) y en
 
 | ID | Funcionalidad | Qué hace | API |
 |---|---|---|---|
-| L-01 | Escenarios | Lista `normal`, `spike` y `attack` con descripción, perfil y duración. | `GET /loadtests/scenarios` |
+| L-01 | Escenarios | Lista `normal`, `spike`, `attack` y `flood` con descripción, perfil y duración. | `GET /loadtests/scenarios` |
 | L-02 | Ver código | Visor con resaltado de sintaxis del script k6 seleccionado. | (incluido en L-01) |
 | L-03 | Ejecutar escenario | (Solo Admin) La API lanza un contenedor `grafana/k6` hermano vía Docker socket. Una sola corrida a la vez (otra → 409). | `POST /loadtests/runs` |
 | L-04 | Seguimiento | Mientras hay una corrida `running`, refresca cada 3 s. | `GET /loadtests/runs` |
