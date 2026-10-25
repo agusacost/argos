@@ -36,11 +36,13 @@ public sealed class NginxMetricsService(ILokiClient loki, IClock clock, ILogger<
         var s3 = SeriesAsync(StatusQuery("3.."), grid, start, now, step, 0.0);
         var s4 = SeriesAsync(StatusQuery("4.."), grid, start, now, step, 0.0);
         var s5 = SeriesAsync(StatusQuery("5.."), grid, start, now, step, 0.0);
+        var s429 = SeriesAsync(StatusQuery("429"), grid, start, now, step, 0.0);
         var p50 = SeriesAsync(QuantileQuery("0.50"), grid, start, now, step, null);
         var p95 = SeriesAsync(QuantileQuery("0.95"), grid, start, now, step, null);
         var p99 = SeriesAsync(QuantileQuery("0.99"), grid, start, now, step, null);
 
         var status = new[] { await s2, await s3, await s4, await s5 };
+        var status429 = await s429;
         var total = grid.Select((_, i) => status.Sum(s => s[i] ?? 0.0)).ToList();
         var errorRate = grid.Select((_, i) =>
             total[i] > 0 ? RoundingMath.Round((status[3][i] ?? 0.0) / total[i] * 100, 2) : 0.0).ToList();
@@ -53,6 +55,7 @@ public sealed class NginxMetricsService(ILokiClient loki, IClock clock, ILogger<
             StatusSeries = new NginxStatusSeries
             {
                 Status2xx = status[0], Status3xx = status[1], Status4xx = status[2], Status5xx = status[3],
+                Status429 = status429,
             },
             Latency = new NginxLatencySeries { P50 = await p50, P95 = await p95, P99 = await p99 },
             ErrorRate = errorRate.Select(x => (double?)x).ToList(),
@@ -60,6 +63,8 @@ public sealed class NginxMetricsService(ILokiClient loki, IClock clock, ILogger<
         };
     }
 
+    // "429" es un status exacto (no una clase ".."), pero la misma stream selector de Loki filtra por
+    // igualdad o regex indistintamente: status=~"429" sirve para ambos casos.
     private static string StatusQuery(string statusClass) =>
         "sum(rate({service=\"nginx\", log_type=\"access\", status=~\"" + statusClass + "\"}[" + RateWindow + "]))";
 

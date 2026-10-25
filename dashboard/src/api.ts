@@ -129,7 +129,7 @@ export interface NginxMetrics {
   range: string;
   step_seconds: number;
   timestamps: number[];
-  status_series: { "2xx": number[]; "3xx": number[]; "4xx": number[]; "5xx": number[] };
+  status_series: { "2xx": number[]; "3xx": number[]; "4xx": number[]; "5xx": number[]; "429": number[] };
   latency: { p50: (number | null)[]; p95: (number | null)[]; p99: (number | null)[] };
   error_rate: number[];
   request_rate: number[];

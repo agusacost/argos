@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Globe, AlertTriangle, Timer } from 'lucide-react';
 import { getNginxMetrics } from '@/api';
 import type { NginxMetrics } from '@/api';
@@ -11,7 +11,17 @@ interface Line {
   data: (number | null)[];
 }
 
-/** Gráfico de líneas multiserie sobre una grilla temporal común. */
+/** Formatea un valor de serie según la unidad del gráfico (igual criterio en eje y tooltip). */
+function fmtValue(v: number, unit: string): string {
+  if (unit === '%') return `${v.toFixed(1)}%`;
+  if (unit === 's') return `${(v * 1000).toFixed(0)} ms`;
+  return v >= 10 ? v.toFixed(1) : v.toFixed(2);
+}
+
+const fmtTime = (ts: number) =>
+  new Date(ts * 1000).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+/** Gráfico de líneas multiserie sobre una grilla temporal común, con tooltip al pasar el mouse. */
 function MultiLineChart({
   timestamps,
   lines,
@@ -27,6 +37,8 @@ function MultiLineChart({
   const H = height;
   const padBottom = 18;
   const plotH = H - padBottom;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   const allVals = lines.flatMap((l) => l.data.filter((v): v is number => v != null));
   const max = Math.max(...allVals, unit === '%' ? 1 : 0.0001);
@@ -37,8 +49,6 @@ function MultiLineChart({
 
   // Etiquetas de tiempo: ~5 ticks.
   const tickIdx = n > 1 ? [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * (n - 1))) : [0];
-  const fmt = (ts: number) =>
-    new Date(ts * 1000).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
   const pathFor = (data: (number | null)[]) => {
     // Conecta solo puntos definidos consecutivos (spanNulls=false).
@@ -64,9 +74,28 @@ function MultiLineChart({
     );
   }
 
+  const onMove = (e: MouseEvent<SVGSVGElement>) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || n < 1) return;
+    const xRatio = (e.clientX - rect.left) / rect.width;
+    const i = Math.round(xRatio * (n - 1));
+    setHoverIdx(Math.min(n - 1, Math.max(0, i)));
+  };
+
+  // Tooltip: se mantiene dentro del ancho del gráfico aunque el cursor esté en el borde.
+  const tooltipLeftPct = hoverIdx != null && n > 1 ? (hoverIdx / (n - 1)) * 100 : 50;
+  const tooltipAlign = tooltipLeftPct > 70 ? 'translate(-100%, 0)' : tooltipLeftPct < 15 ? 'translate(0, 0)' : 'translate(-50%, 0)';
+
   return (
     <div className="relative" style={{ height: H }}>
-      <svg className="w-full h-full" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <svg
+        ref={svgRef}
+        className="w-full h-full cursor-crosshair"
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        onMouseMove={onMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
         {[0, 0.25, 0.5, 0.75, 1].map((f) => (
           <line key={f} x1="0" y1={f * plotH} x2={W} y2={f * plotH} stroke="#1e293b" strokeWidth="0.5" />
         ))}
@@ -81,6 +110,16 @@ function MultiLineChart({
             strokeLinecap="round"
           />
         ))}
+        {hoverIdx != null && (
+          <>
+            <line x1={xAt(hoverIdx)} y1="0" x2={xAt(hoverIdx)} y2={plotH} stroke="#475569" strokeWidth="1" strokeDasharray="3,3" />
+            {lines.map((l) => {
+              const v = l.data[hoverIdx];
+              if (v == null) return null;
+              return <circle key={l.label} cx={xAt(hoverIdx)} cy={yAt(v)} r="3.5" fill="#0a0e14" stroke={l.color} strokeWidth="2" />;
+            })}
+          </>
+        )}
       </svg>
       <div className="absolute left-0 right-0 flex justify-between px-1" style={{ top: 0 }}>
         <span className="text-[9px] text-slate-600">
@@ -91,10 +130,28 @@ function MultiLineChart({
       <div className="absolute bottom-0 left-0 right-0 flex justify-between px-1">
         {tickIdx.map((i) => (
           <span key={i} className="text-[9px] text-slate-600">
-            {timestamps[i] != null ? fmt(timestamps[i]) : ''}
+            {timestamps[i] != null ? fmtTime(timestamps[i]).slice(0, 5) : ''}
           </span>
         ))}
       </div>
+      {hoverIdx != null && timestamps[hoverIdx] != null && (
+        <div
+          className="absolute top-1 bg-slate-950/95 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[10px] pointer-events-none shadow-xl z-10 whitespace-nowrap"
+          style={{ left: `${tooltipLeftPct}%`, transform: tooltipAlign }}
+        >
+          <div className="text-slate-400 font-mono mb-1">{fmtTime(timestamps[hoverIdx])}</div>
+          {lines.map((l) => {
+            const v = l.data[hoverIdx];
+            return (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <span className="w-2 h-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: l.color }} />
+                <span className="text-slate-300">{l.label}:</span>
+                <span className="text-white font-mono">{v != null ? fmtValue(v, unit) : '—'}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -137,6 +194,9 @@ export function NginxSignals() {
         { label: '3xx', color: '#60a5fa', data: data.status_series['3xx'] },
         { label: '4xx', color: '#fbbf24', data: data.status_series['4xx'] },
         { label: '5xx', color: '#f87171', data: data.status_series['5xx'] },
+        // Subconjunto de 4xx: requests cortados por el rate limit de nginx (limit_req/limit_conn).
+        // Se grafica aparte para que un flood/DDoS L7 se distinga de otros 4xx (404, 403, etc.).
+        { label: '429 (rate limit)', color: '#f472b6', data: data.status_series['429'] },
       ]
     : [];
 

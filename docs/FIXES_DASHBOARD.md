@@ -35,6 +35,36 @@ p95 1.86ms sobre lo que sí pasó — el backend nunca se degrada, el rate limit
   vería si el intento produce 4xx/5xx en volumen suficiente para las alertas existentes. Agregar esto requeriría
   un WAF (ModSecurity/Coraza) delante de nginx o reglas Loki por patrón en el access log.
 
+### Revisión de legibilidad de los dashboards (vista Métricas) · 2026-10-25
+
+Revisión de qué tan fácil es interpretar la información real vs. decorativa en `DashboardView` y `MetricsView`.
+Dos hallazgos ya estaban anotados abajo (**F-11**, **F-12**: valores fijos como "Uptime IA: 99.99%" y
+sparklines planas que simulan una tendencia que no existe) — siguen pendientes, no se tocaron en esta pasada.
+
+Se implementaron las dos mejoras de mayor impacto sobre `NginxSignals.tsx` (vista Métricas → golden signals de
+Nginx), ambas **validadas E2E** con el escenario `flood` de k6 corriendo en vivo:
+
+1. **Serie `429` separada del resto de 4xx.** Antes, un rate-limit cortando tráfico (nuestro propio escenario
+   `flood`) quedaba invisible: sumaba al balde genérico "4xx" junto con 404/403/400 y no se distinguía de un
+   error de cliente normal. Ahora `GET /observability/nginx-metrics` devuelve `status_series["429"]` como
+   serie propia (query Loki `status=~"429"` separada de `status=~"4.."`), graficada en el dashboard con su
+   propio color ("429 (rate limit)"). Cambios: `NginxStatusSeries.Status429` (`Argos.Entities`),
+   `NginxMetricsService.GetAsync` (`Argos.Business`), tipo `NginxMetrics` en `dashboard/src/api.ts`.
+   **Validado:** con el escenario `flood` corriendo, el access log de nginx mostró 96/300 líneas con
+   `status=429` en la ventana reciente y la API devolvió ese mismo volumen en `status_series["429"]`
+   (`0.175 req/s`, consistente con el ritmo real).
+2. **Tooltip con valor exacto al pasar el mouse** en los gráficos de líneas de `NginxSignals` (status codes y
+   latencia). Antes solo se podía leer el máximo del eje y las gridlines; ahora, al mover el mouse sobre el
+   gráfico aparece una línea guía vertical + un recuadro con la hora exacta y el valor de cada serie en ese
+   punto (latencia se muestra en ms, tasas en el valor crudo, porcentajes con `%`).
+
+**Pendiente de esta misma revisión (no implementado, para una próxima pasada):**
+- Marcadores de alertas disparadas superpuestos en el gráfico de golden signals (correlacionar visualmente
+  "acá subió la latencia" con "acá se abrió el incidente", sin cruzar con la tabla).
+- Serie temporal de request rate total (hoy `NginxSignals` solo muestra el valor instantáneo "actual", no su
+  evolución, a diferencia de status codes y latencia que sí son series).
+- F-11/F-12 (valores decorativos y sparklines planas) siguen sin resolver — ver más abajo.
+
 ---
 
 ## Alta

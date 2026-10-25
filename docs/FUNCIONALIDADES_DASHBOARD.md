@@ -66,7 +66,7 @@ Columna **ID** = identificador usado en la suite E2E (`dashboard/e2e/`) y en
 | M-01 | Tarjetas | MTTR promedio + tendencia, incidentes totales (barra de % resueltos), auto-documentados. | `GET /incidents/metrics` |
 | M-02 | Incidentes por día | Gráfico de líneas de los últimos 7 días. | ídem |
 | M-03 | Salud de servicios | Probe HTTP directo a nginx, API de membresía, Qdrant y la propia Argos API: `healthy` / `degraded` / `unknown`. | `GET /observability/services` |
-| M-04 | Golden signals Nginx | Desde Loki: requests/s por código (2xx–5xx), latencia upstream p50/p95/p99, request rate y % de 5xx actuales. Selector 15m/1h/3h/6h; refresco cada 20 s. | `GET /observability/nginx-metrics?range=` |
+| M-04 | Golden signals Nginx | Desde Loki: requests/s por código (2xx, 3xx, 4xx, 5xx y **429 como serie propia** —subset del rate limit, separado del resto de 4xx—), latencia upstream p50/p95/p99, request rate y % de 5xx actuales. Selector 15m/1h/3h/6h; refresco cada 20 s; tooltip con valor exacto al pasar el mouse sobre los gráficos. | `GET /observability/nginx-metrics?range=` |
 | M-05 | Top tipos de alerta | Los 5 tipos con más incidentes. | `GET /incidents/metrics` |
 | M-06 | Desglose por estado | Cantidad de incidentes por estado. | ídem |
 

@@ -16,4 +16,8 @@ public sealed class NginxStatusSeries
 
     [JsonPropertyName("5xx")]
     public IReadOnlyList<double?> Status5xx { get; init; } = [];
+
+    /// <summary>Subconjunto de 4xx: requests cortados por el rate limit de nginx (limit_req/limit_conn).</summary>
+    [JsonPropertyName("429")]
+    public IReadOnlyList<double?> Status429 { get; init; } = [];
 }
