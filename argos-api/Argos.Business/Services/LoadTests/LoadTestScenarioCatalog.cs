@@ -29,7 +29,7 @@ public sealed class LoadTestScenarioCatalog : ILoadTestScenarioCatalog
         {
             Id = "attack",
             Name = "Patrón de ataque",
-            Descripcion = "~50 VUs atacando (404s, UA vacío) + fondo legítimo. Dispara alertas de error rate / IP sospechosa y la cadena de detección.",
+            Descripcion = "~50 VUs atacando (404s, UA vacío) + fondo legítimo. Dispara las alertas de IP sospechosa y spike del error.log (rate limit → 429) y la cadena de detección.",
             Perfil = "5 VUs base + 50 VUs atacando (min 1–4)",
             DuracionAprox = "~5 min",
             Archivo = "attack-pattern.js",
