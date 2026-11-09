@@ -9,10 +9,11 @@ namespace Argos.Repository.Llm;
 public abstract class LlmProviderBase(IHttpClientFactory httpFactory) : ILlmProvider
 {
     public abstract string Name { get; }
-    public abstract string ModelPrefix { get; }
     public abstract string DefaultModel { get; }
     public abstract string ApiKeyVariable { get; }
     public abstract bool IsConfigured { get; }
+
+    public abstract bool AcceptsModel(string model);
 
     public async Task<LlmCheckResult> CheckAsync(string model)
     {
@@ -26,10 +27,14 @@ public abstract class LlmProviderBase(IHttpClientFactory httpFactory) : ILlmProv
         }
     }
 
+    public abstract Task PingAsync(string model);
+
     public abstract Task<string> GenerateAsync(string systemPrompt, string userPrompt, string model);
 
     /// <summary>Verificación propia del proveedor; los errores de red se informan como advertencia.</summary>
     protected abstract Task<LlmCheckResult> CheckCoreAsync(HttpClient http, string model);
+
+    protected HttpClient CheckClient => httpFactory.CreateClient(HttpClientNames.LlmCheck);
 
     protected async Task<JsonNode?> PostAsync(string url, JsonObject body, IReadOnlyDictionary<string, string>? headers = null)
     {
@@ -42,17 +47,18 @@ public abstract class LlmProviderBase(IHttpClientFactory httpFactory) : ILlmProv
         var text = await r.Content.ReadAsStringAsync();
         if (!r.IsSuccessStatusCode)
             // Sin la URL: en Gemini lleva la API key en el query string.
-            throw new HttpRequestException($"{DisplayName} respondió HTTP {(int)r.StatusCode}: {Truncate(text, 300)}");
+            throw new HttpRequestException($"{DisplayName} respondió HTTP {(int)r.StatusCode}: {Truncate(text, 300)}",
+                null, r.StatusCode);
         return JsonNode.Parse(text);
     }
 
-    /// <summary>Nombre para mensajes ("Gemini", "Anthropic").</summary>
+    /// <summary>Nombre para mensajes ("Gemini", "Anthropic", "Groq", "OpenRouter").</summary>
     protected abstract string DisplayName { get; }
 
     protected static void EnsureSuccess(HttpResponseMessage r)
     {
         if (!r.IsSuccessStatusCode)
-            throw new HttpRequestException($"HTTP {(int)r.StatusCode} {r.ReasonPhrase}");
+            throw new HttpRequestException($"HTTP {(int)r.StatusCode} {r.ReasonPhrase}", null, r.StatusCode);
     }
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];

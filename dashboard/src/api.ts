@@ -150,9 +150,13 @@ export const getRecentActivity = () =>
 
 // ─── Notificaciones ───────────────────────────────────────────────────────────
 
+export type NotificationKind = "incident" | "llm_health" | "pipeline_error";
+
 export interface Notification {
   id: string;
-  incident_id: string;
+  kind: NotificationKind;
+  /** Incidente al que lleva el aviso; null en los avisos de salud de la IA. */
+  incident_id: string | null;
   title: string;
   message: string;
   severity: string;
@@ -164,6 +168,30 @@ export const getNotifications = () => getJson<Notification[]>("/notifications");
 
 export const markNotificationRead = (id: string) =>
   postJson<Notification>(`/notifications/${id}/read`);
+
+export const markAllNotificationsRead = () =>
+  postJson<{ updated: number }>("/notifications/read-all");
+
+// ─── Salud de la IA (cadena principal + respaldo) ───────────────────────────────
+
+export interface LlmHealth {
+  provider: string;
+  model: string;
+  role: "primary" | "fallback";
+  configured: boolean;
+  status: "up" | "down" | "unknown" | "unconfigured";
+  /** false mientras dura el cooldown tras un fallo (el proveedor pasa al final de la cadena). */
+  available: boolean;
+  last_error: string | null;
+  last_checked_at: string | null;
+  last_success_at: string | null;
+  latency_ms: number | null;
+  retry_after: string | null;
+}
+
+export const getLlmHealth = () => getJson<LlmHealth[]>("/llm/health");
+
+export const checkLlmHealth = () => postJson<LlmHealth[]>("/llm/health/check");
 
 // ─── Usuarios ─────────────────────────────────────────────────────────────────
 

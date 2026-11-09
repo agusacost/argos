@@ -12,7 +12,6 @@ public sealed class AnthropicProvider(IHttpClientFactory httpFactory, ILlmConfig
     private const int MaxTokens = 1536;
 
     public override string Name => "anthropic";
-    public override string ModelPrefix => "claude";
     public override string DefaultModel => config.ClaudeModel;
     public override string ApiKeyVariable => "ANTHROPIC_API_KEY";
     public override bool IsConfigured => config.AnthropicApiKey.Length > 0;
@@ -23,6 +22,8 @@ public sealed class AnthropicProvider(IHttpClientFactory httpFactory, ILlmConfig
         ["x-api-key"] = config.AnthropicApiKey,
         ["anthropic-version"] = ApiVersion,
     };
+
+    public override bool AcceptsModel(string model) => model.StartsWith("claude", StringComparison.OrdinalIgnoreCase);
 
     protected override async Task<LlmCheckResult> CheckCoreAsync(HttpClient http, string model)
     {
@@ -39,17 +40,21 @@ public sealed class AnthropicProvider(IHttpClientFactory httpFactory, ILlmConfig
             : LlmCheckResult.Ok;
     }
 
+    public override Task PingAsync(string model) =>
+        PostAsync($"{BaseUrl}/messages", Body("Respondé solo: ok", "ping", model, 1), Headers);
+
     public override async Task<string> GenerateAsync(string systemPrompt, string userPrompt, string model)
     {
-        var body = new JsonObject
-        {
-            ["model"] = model,
-            ["max_tokens"] = MaxTokens,
-            ["system"] = systemPrompt,
-            ["messages"] = new JsonArray(new JsonObject { ["role"] = "user", ["content"] = userPrompt }),
-        };
-        var data = await PostAsync($"{BaseUrl}/messages", body, Headers);
+        var data = await PostAsync($"{BaseUrl}/messages", Body(systemPrompt, userPrompt, model, MaxTokens), Headers);
         return data?["content"]?[0]?["text"]?.GetValue<string>()
                ?? throw new InvalidOperationException($"Respuesta inesperada de Anthropic: {data?.ToJsonString()}");
     }
+
+    private static JsonObject Body(string systemPrompt, string userPrompt, string model, int maxTokens) => new()
+    {
+        ["model"] = model,
+        ["max_tokens"] = maxTokens,
+        ["system"] = systemPrompt,
+        ["messages"] = new JsonArray(new JsonObject { ["role"] = "user", ["content"] = userPrompt }),
+    };
 }

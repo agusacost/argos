@@ -13,7 +13,18 @@ public sealed class IncidentDocumentPrompt
         "Generá documentación técnica concisa en Markdown con estas secciones exactas: " +
         "\"# Título\", \"## Descripción\", \"## Causa raíz probable\", " +
         "\"## Pasos de resolución\" (lista numerada), \"## Prevención\". " +
-        "Respondé en español y devolvé SOLO el Markdown, sin texto adicional.";
+        "Respondé en español y devolvé SOLO el Markdown, sin texto adicional. " + StackContext;
+
+    /// <summary>
+    /// Entorno real del stack (mismo texto que en los nodos n8n 'Build Prompt' / 'Build Doc Prompt'): sin esto los modelos
+    /// proponen comandos genéricos (systemd, kubectl) que no aplican (evaluación OE3, 2026-10-27).
+    /// </summary>
+    public const string StackContext =
+        "Entorno de Argos: un único host con Docker Compose (proyecto argos-platform), sin Kubernetes ni systemd. " +
+        "Contenedores: nginx-proxy (reverse proxy, puerto 80), membresia-api (API .NET, upstream de Nginx; en el host :5000), " +
+        "membresia-sqlserver (SQL Server de la API), nginx-prometheus-exporter (:9113), node-exporter (:9100), cadvisor (:8080), " +
+        "alloy (envía los logs de Nginx a Loki), argos-platform-prometheus-1, argos-platform-loki-1, argos-platform-alertmanager-1, " +
+        "argos-platform-grafana-1. En los comandos usá esos nombres reales (docker ps -a, docker logs, docker start/restart).";
 
     private const int AlertsCount = 1;
 

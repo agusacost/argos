@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { AppContext } from './types';
 import type { AppContextType, User, IncidentVM, Metrics } from './types';
-import type { Notification } from './api';
+import type { LlmHealth, Notification } from './api';
 import { toIncidentVM } from './adapters';
 import {
   getMetrics, listIncidents, patchIncident,
   loginApi, getMe, setStoredToken, getStoredToken,
-  generateDocument, getNotifications, getSettings,
+  generateDocument, getNotifications, getSettings, getLlmHealth,
 } from './api';
 import { Login } from './components/Login';
 import { Sidebar } from './components/Sidebar';
@@ -25,11 +25,13 @@ const DEFAULT_POLL_SECONDS = 20;
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState('dashboard');
+  const [incidentsEstadoFilter, setIncidentsEstadoFilter] = useState('');
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [incidents, setIncidents] = useState<IncidentVM[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loadingIncidents, setLoadingIncidents] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [llmHealth, setLlmHealth] = useState<LlmHealth[]>([]);
   const [pollingSeconds, setPollingSeconds] = useState(DEFAULT_POLL_SECONDS);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -51,8 +53,9 @@ function App() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const notifs = await getNotifications();
+      const [notifs, health] = await Promise.all([getNotifications(), getLlmHealth()]);
       setNotifications(notifs);
+      setLlmHealth(health);
     } catch {
       // silently fail — token might not be ready
     }
@@ -116,6 +119,7 @@ function App() {
     setIncidents([]);
     setMetrics(null);
     setNotifications([]);
+    setLlmHealth([]);
   }, []);
 
   const resolveIncident = useCallback(async (id: string) => {
@@ -132,10 +136,16 @@ function App() {
 
   const ctx: AppContextType = {
     user, login, logout,
-    activeView, setActiveView,
+    activeView,
+    // Navegar desde el menú abre Incidentes sin filtro; solo openIncidents lo fija.
+    setActiveView: (v: string) => { setIncidentsEstadoFilter(''); setActiveView(v); },
+    incidentsEstadoFilter,
+    openIncidents: (estado = '') => { setIncidentsEstadoFilter(estado); setActiveView('incidents'); },
     selectedIncidentId, setSelectedIncidentId,
     incidents, metrics, loadingIncidents,
     notifications,
+    refreshNotifications: () => { void loadNotifications(); },
+    llmHealth, setLlmHealth,
     resolveIncident, documentIncident,
     refreshIncidents: () => { void loadData(); },
     pollingSeconds, setPollingSeconds,

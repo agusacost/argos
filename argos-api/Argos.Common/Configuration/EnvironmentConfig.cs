@@ -26,7 +26,7 @@ public sealed class EnvironmentConfig
 
     // ─── Seeding ─────────────────────────────────────────────────────────────
     public bool AutoSeed => Flag("ARGOS_AUTO_SEED", true);
-    public bool SeedDemo => Flag("ARGOS_SEED_DEMO", true);
+    public bool SeedDemo => Flag("ARGOS_SEED_DEMO", false);
     public string KnowledgeDir => Get("KNOWLEDGE_DIR", Path.Combine(AppContext.BaseDirectory, "knowledge"));
 
     // ─── LLM ─────────────────────────────────────────────────────────────────
@@ -35,6 +35,12 @@ public sealed class EnvironmentConfig
     public string GeminiModel => Get("GEMINI_MODEL", "gemini-flash-latest");
     public string AnthropicApiKey => Get("ANTHROPIC_API_KEY");
     public string ClaudeModel => Get("CLAUDE_MODEL", "claude-sonnet-4-6");
+    public string GroqApiKey => Get("GROQ_API_KEY");
+    public string GroqModel => Get("GROQ_MODEL", "llama-3.3-70b-versatile");
+    public string OpenRouterApiKey => Get("OPENROUTER_API_KEY");
+    public string OpenRouterModel => Get("OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free");
+    public string LlmFallbackChain => Get("LLM_FALLBACK_CHAIN", "gemini:gemini-flash-lite-latest,groq,openrouter");
+    public int LlmCooldownSeconds => Int("LLM_COOLDOWN_SECONDS", 300);
 
     // ─── Observabilidad ──────────────────────────────────────────────────────
     public string PrometheusUrl => Get("PROMETHEUS_URL", "http://localhost:9090");

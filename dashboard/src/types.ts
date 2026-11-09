@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { Notification } from './api';
+import type { LlmHealth, Notification } from './api';
 
 // ─── Backend types (preserved) ────────────────────────────────────────────────
 export interface IncidentSummary {
@@ -33,12 +33,16 @@ export interface Metrics {
   by_alert_type: Record<string, number>;
   mttr_average_minutes: number | null;
   incidents_per_day: { date: string; count: number }[];
+  /** Tendencia del VOLUMEN de incidentes por día. */
   recent_trend: 'improving' | 'stable' | 'degrading';
+  /** Tendencia del MTTR: últimos 7 días contra los 7 anteriores. */
+  mttr_trend: 'improving' | 'stable' | 'degrading' | 'no_data';
+  mttr_per_day: { date: string; average_minutes: number }[];
 }
 
 // ─── UI View Model ─────────────────────────────────────────────────────────────
 export type Severity = 'critical' | 'warning' | 'info';
-export type UIStatus = 'ai_analyzing' | 'investigating' | 'resolved' | 'documented';
+export type UIStatus = 'undocumented' | 'investigating' | 'resolved' | 'documented';
 
 export interface User {
   id: string;
@@ -98,12 +102,19 @@ export interface AppContextType {
   logout: () => void;
   activeView: string;
   setActiveView: (v: string) => void;
+  /** Filtro de estado con el que se abre la vista Incidentes (p. ej. desde un KPI del Dashboard). */
+  incidentsEstadoFilter: string;
+  openIncidents: (estado?: string) => void;
   selectedIncidentId: string | null;
   setSelectedIncidentId: (id: string | null) => void;
   incidents: IncidentVM[];
   metrics: Metrics | null;
   loadingIncidents: boolean;
   notifications: Notification[];
+  refreshNotifications: () => void;
+  /** Cadena LLM (principal + respaldo) según las últimas llamadas reales. */
+  llmHealth: LlmHealth[];
+  setLlmHealth: (h: LlmHealth[]) => void;
   resolveIncident: (id: string) => Promise<void>;
   documentIncident: (id: string) => Promise<void>;
   refreshIncidents: () => void;

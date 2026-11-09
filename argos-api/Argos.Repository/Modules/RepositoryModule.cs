@@ -40,6 +40,8 @@ public sealed class RepositoryModule : Module
         // LLM: se resuelven todos juntos como IEnumerable<ILlmProvider>
         builder.RegisterType<GeminiProvider>().As<ILlmProvider>().SingleInstance();
         builder.RegisterType<AnthropicProvider>().As<ILlmProvider>().SingleInstance();
+        builder.RegisterType<GroqProvider>().As<ILlmProvider>().SingleInstance();
+        builder.RegisterType<OpenRouterProvider>().As<ILlmProvider>().SingleInstance();
 
         // k6
         builder.RegisterType<DockerK6ContainerRunner>().As<IK6ContainerRunner>().SingleInstance();

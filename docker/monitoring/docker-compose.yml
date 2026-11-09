@@ -103,8 +103,15 @@ services:
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      # Respaldo gratuito (API compatible con OpenAI) y cadena de fallback después del proveedor principal
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-nvidia/nemotron-3-ultra-550b-a55b:free}
+      - LLM_FALLBACK_CHAIN=${LLM_FALLBACK_CHAIN:-gemini:gemini-flash-lite-latest,groq,openrouter}
+      - LLM_COOLDOWN_SECONDS=${LLM_COOLDOWN_SECONDS:-300}
       - ARGOS_AUTO_SEED=${ARGOS_AUTO_SEED:-true}
-      - ARGOS_SEED_DEMO=${ARGOS_SEED_DEMO:-true}
+      - ARGOS_SEED_DEMO=${ARGOS_SEED_DEMO:-false}
       # Secreto (header X-Argos-Token) de los endpoints internos que usa n8n: /query, /upsert,
       # /internal/config y /notifications/recipients
       - ARGOS_INTERNAL_TOKEN=${ARGOS_INTERNAL_TOKEN:-}
@@ -149,12 +156,7 @@ services:
       - GENERIC_TIMEZONE=America/Argentina/Buenos_Aires
       - N8N_DIAGNOSTICS_ENABLED=false
       - N8N_RUNNERS_ENABLED=true
-      # Passthrough consumido por el workflow Alert Analysis (Route LLM)
-      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      # El LLM lo llama rag-api (/internal/llm/generate, con fallback): n8n no necesita API keys de LLM.
       - RAG_API_URL=${RAG_API_URL:-http://rag-api:8000}
       - ALERT_THRESHOLD=${ALERT_THRESHOLD:-3}
       # Fallback: el pool de destinatarios se lee de rag-api (/notifications/recipients)

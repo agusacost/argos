@@ -1,17 +1,50 @@
-import { Bell, Shield, Cpu, Database, Webhook, Save, Sliders, CheckCircle2, AlertCircle, Mail, Plus, X, RefreshCw } from 'lucide-react';
+import { Bell, Shield, Cpu, Database, Webhook, Save, Sliders, CheckCircle2, AlertCircle, Mail, Plus, X, RefreshCw, Activity } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { getIntegrationsStatus, getSettings, updateSettings } from '@/api';
-import type { IntegrationStatus, Settings } from '@/api';
+import { checkLlmHealth, getIntegrationsStatus, getSettings, updateSettings } from '@/api';
+import type { IntegrationStatus, LlmHealth, Settings } from '@/api';
 import { useApp } from '@/types';
+import { PROVIDER_LABEL } from '@/llmStatus';
 
 const MAX_RECIPIENTS = 50;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const DEFAULT_MODEL: Record<string, string> = { gemini: 'gemini-flash-latest', anthropic: 'claude-sonnet-4-6' };
-const KEY_ENV: Record<string, string> = { gemini: 'GEMINI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
+const DEFAULT_MODEL: Record<string, string> = {
+  gemini: 'gemini-flash-lite-latest',
+  anthropic: 'claude-sonnet-4-6',
+  groq: 'llama-3.3-70b-versatile',
+  openrouter: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+};
+const KEY_ENV: Record<string, string> = {
+  gemini: 'GEMINI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  groq: 'GROQ_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+};
 const INTEGRATIONS_REFRESH_MS = 30_000;
 
+const HEALTH_DOT: Record<LlmHealth['status'], string> = {
+  up: 'bg-emerald-400',
+  down: 'bg-red-500',
+  unknown: 'bg-slate-500',
+  unconfigured: 'border border-slate-600',
+};
+
+const formatTime = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+function healthDetail(h: LlmHealth): { text: string; tone: string } {
+  if (h.status === 'unconfigured') return { text: `falta ${KEY_ENV[h.provider] ?? 'la API key'}`, tone: 'text-slate-500' };
+  if (h.status === 'down') {
+    const retry = h.retry_after ? ` · reintenta ${formatTime(h.retry_after)}` : ' · se reintenta en la próxima alerta';
+    return { text: `${h.last_error ?? 'falló'}${retry}`, tone: 'text-red-400' };
+  }
+  if (h.status === 'up') return { text: `${h.latency_ms ?? '?'} ms · ${formatTime(h.last_checked_at)}`, tone: 'text-slate-500' };
+  return { text: 'sin llamadas todavía', tone: 'text-slate-500' };
+}
+
 export function SettingsView() {
-  const { user, setPollingSeconds } = useApp();
+  const { user, setPollingSeconds, llmHealth, setLlmHealth } = useApp();
+  const [checkingLlm, setCheckingLlm] = useState(false);
+  const [llmCheckError, setLlmCheckError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,6 +79,18 @@ export function SettingsView() {
     const id = setInterval(() => { void refreshIntegrations(); }, INTEGRATIONS_REFRESH_MS);
     return () => clearInterval(id);
   }, [refreshIntegrations]);
+
+  const runLlmCheck = async () => {
+    setCheckingLlm(true);
+    setLlmCheckError(null);
+    try {
+      setLlmHealth(await checkLlmHealth());
+    } catch (e: unknown) {
+      setLlmCheckError(e instanceof Error ? e.message : 'No se pudo probar los modelos');
+    } finally {
+      setCheckingLlm(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!settings) return;
@@ -120,8 +165,9 @@ export function SettingsView() {
               }}
               className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500/50 disabled:opacity-60"
             >
-              <option value="gemini">Google Gemini</option>
-              <option value="anthropic">Anthropic Claude</option>
+              {Object.entries(PROVIDER_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
             </select>
             {keyMissing && (
               <p className="text-xs text-amber-400/80 mt-1.5">
@@ -145,6 +191,67 @@ export function SettingsView() {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Salud de la cadena LLM */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-lg bg-violet-500/10 flex items-center justify-center">
+            <Activity className="w-5 h-5 text-violet-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-white">Estado de los modelos IA</h3>
+            <p className="text-xs text-slate-500">
+              Si el principal falla (cuota, saturación, timeout) se usa el siguiente de la cadena. El estado se
+              actualiza con cada llamada real; no hay pings automáticos.
+            </p>
+          </div>
+          {isAdmin && (
+            <button
+              onClick={() => { void runLlmCheck(); }}
+              disabled={checkingLlm}
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 flex-shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${checkingLlm ? 'animate-spin' : ''}`} />
+              {checkingLlm ? 'Probando…' : 'Probar ahora'}
+            </button>
+          )}
+        </div>
+        {llmHealth.length === 0 ? (
+          <p className="text-xs text-slate-500">Sin datos de la cadena LLM.</p>
+        ) : (
+          <div className="space-y-2">
+            {llmHealth.map((h, i) => {
+              const detail = healthDetail(h);
+              return (
+                <div
+                  key={`${h.provider}:${h.model}`}
+                  className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800/50 rounded-lg p-3"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-[10px] text-slate-600 w-3">{i + 1}</span>
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${HEALTH_DOT[h.status]}`} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">
+                        {PROVIDER_LABEL[h.provider] ?? h.provider}
+                        <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${h.role === 'primary' ? 'bg-cyan-500/10 text-cyan-300' : 'bg-slate-800 text-slate-400'}`}>
+                          {h.role === 'primary' ? 'Principal' : 'Respaldo'}
+                        </span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 truncate">{h.model}</p>
+                    </div>
+                  </div>
+                  <span className={`text-xs text-right ${detail.tone}`}>{detail.text}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {llmCheckError != null && <p className="text-xs text-red-400 mt-2">{llmCheckError}</p>}
+        <p className="text-[10px] text-slate-600 mt-3">
+          El orden de respaldo se define en el servidor con LLM_FALLBACK_CHAIN. «Probar ahora» hace una generación
+          mínima contra cada proveedor (consume una request de la cuota de cada uno).
+        </p>
       </div>
 
       {/* RAG */}

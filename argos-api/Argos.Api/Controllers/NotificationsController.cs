@@ -1,6 +1,7 @@
 using Argos.Business.Services.Audit;
 using Argos.Business.Services.Notifications;
 using Argos.Entities;
+using Argos.Entities.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,6 +15,9 @@ public sealed class NotificationsController(INotificationService notifications, 
 
     [HttpGet("notifications")]
     public Task<IReadOnlyList<Notification>> List() => notifications.ListAsync();
+
+    [HttpPost("notifications/read-all")]
+    public async Task<MarkAllReadResponse> MarkAllAsRead() => new(await notifications.MarkAllAsReadAsync());
 
     [HttpPost("notifications/{notificationId}/read")]
     public Task<Notification> MarkAsRead(string notificationId) => notifications.MarkAsReadAsync(notificationId);
