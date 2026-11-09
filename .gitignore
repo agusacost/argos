@@ -59,6 +59,7 @@ pnpm-lock.yaml
 
 # Builds del dashboard
 dist/
+*.tsbuildinfo
 
 # Visual Studio / Rider
 .vs/
@@ -79,3 +80,6 @@ desktop.ini
 *.swp
 .local/
 graphify-out/
+
+# Evaluación OE3: salidas crudas (los resultados finales se pasan a docs/EVALUACION_OE3.md)
+eval/results/
