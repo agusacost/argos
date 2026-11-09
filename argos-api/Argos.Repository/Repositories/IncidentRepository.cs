@@ -46,6 +46,13 @@ public sealed class IncidentRepository(
         return hits.Select(h => new ScoredIncident(ToEntity(h), h.Score)).ToList();
     }
 
+    public async Task<bool> SaveIfAbsentAsync(Incident incident)
+    {
+        if (await GetByIdAsync(AssignId(incident)) is not null) return false;
+        await SaveAsync(incident);
+        return true;
+    }
+
     public Task<IReadOnlyList<Incident>> FindAsync(IncidentFilter filter) =>
         FindAsync(new QdrantFilter()
             .MatchValue("estado", filter.Estado)

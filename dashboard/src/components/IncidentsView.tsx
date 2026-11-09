@@ -8,8 +8,8 @@ import { IncidentRows } from './IncidentTable';
 
 const ESTADOS = [
   { value: '', label: 'Todos los estados' },
-  { value: 'nuevo', label: 'Nuevo' },
-  { value: 'pendiente', label: 'Pendiente' },
+  { value: 'nuevo', label: 'Sin documentar' },
+  { value: 'pendiente', label: 'En curso' },
   { value: 'resuelto', label: 'Resuelto' },
   { value: 'auto_documentado', label: 'Auto-documentado' },
   { value: 'documentado_previamente', label: 'Documentado previamente' },
@@ -18,11 +18,11 @@ const ESTADOS = [
 const SIZE = 20;
 
 export function IncidentsView() {
-  const { selectedIncidentId, setSelectedIncidentId } = useApp();
+  const { selectedIncidentId, setSelectedIncidentId, incidentsEstadoFilter } = useApp();
   const [rows, setRows] = useState<IncidentVM[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [estado, setEstado] = useState('');
+  const [estado, setEstado] = useState(incidentsEstadoFilter);
   const [tipo, setTipo] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);

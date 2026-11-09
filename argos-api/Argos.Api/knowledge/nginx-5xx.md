@@ -6,7 +6,7 @@ pasos:
   - "Revisar estado de la API .NET: curl http://localhost:5000/api/status"
   - "Comprobar que SQL Server responde: docker exec membresia-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -C -Q 'SELECT 1'"
   - "Revisar uso de recursos del contenedor API: docker stats membresia-api --no-stream"
-  - "Reiniciar el servicio API si es necesario: docker compose -p argos-apps restart api"
+  - "Si la API está detenida o colgada (docker ps -a --filter name=membresia-api): docker start membresia-api o docker restart membresia-api"
   - "Si el problema persiste, revisar los logs de la aplicación en Grafana (dashboard nginx-logs)"
 estado: documentado_previamente
 fuente: manual

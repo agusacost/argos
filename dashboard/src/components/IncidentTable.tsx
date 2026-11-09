@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   AlertOctagon, AlertTriangle, Info, ChevronRight, Cpu, CheckCircle2,
-  FileCheck2, Clock, UserCircle,
+  FileCheck2, FileQuestion, Clock, UserCircle,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useApp } from '@/types';
@@ -20,7 +20,7 @@ const severityConfig: Record<Severity, { icon: React.ElementType; color: string;
 };
 
 const statusConfig: Record<UIStatus, { color: string; bg: string; label: string; icon: React.ElementType }> = {
-  ai_analyzing: { color: 'text-cyan-300', bg: 'bg-cyan-500/10 border-cyan-500/20', label: 'Analizando IA', icon: Cpu },
+  undocumented: { color: 'text-cyan-300', bg: 'bg-cyan-500/10 border-cyan-500/20', label: 'Sin documentar', icon: FileQuestion },
   investigating: { color: 'text-amber-300', bg: 'bg-amber-500/10 border-amber-500/20', label: 'Investigando', icon: AlertTriangle },
   resolved: { color: 'text-emerald-300', bg: 'bg-emerald-500/10 border-emerald-500/20', label: 'Resuelto', icon: CheckCircle2 },
   documented: { color: 'text-violet-300', bg: 'bg-violet-500/10 border-violet-500/20', label: 'Documentado', icon: FileCheck2 },

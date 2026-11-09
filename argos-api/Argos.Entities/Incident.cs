@@ -21,9 +21,27 @@ public class Incident : IncidentSummary
     [JsonIgnore]
     public string EmbeddingText => Resumen;
 
-    /// <summary>Clave del id determinístico: re-guardar el mismo incidente sobrescribe el mismo punto.</summary>
+    /// <summary>
+    /// Clave del id determinístico: re-guardar el mismo incidente sobrescribe el mismo punto. Con
+    /// <c>detected_at</c> (el <c>startsAt</c> de Alertmanager) cada ocurrencia de una alerta es un punto propio;
+    /// los runbooks no lo tienen y conservan su id.
+    /// </summary>
     [JsonIgnore]
-    public string NaturalKey => $"{TipoAlerta}::{Resumen}";
+    public string NaturalKey => string.IsNullOrEmpty(DetectedAt)
+        ? $"{TipoAlerta}::{Resumen}"
+        : $"{TipoAlerta}::{Resumen}::{DetectedAt}";
+
+    /// <summary>Tiene cómo resolverse: documento (auto-doc) o pasos (runbooks manuales).</summary>
+    [JsonIgnore]
+    public bool HasSolution => !string.IsNullOrEmpty(Documento) || Pasos.Count > 0;
+
+    /// <summary>Sigue abierto: todavía no tiene <c>resolved_at</c>.</summary>
+    [JsonIgnore]
+    public bool IsOpen => string.IsNullOrEmpty(ResolvedAt);
+
+    /// <summary>Misma alerta y mismo instante de detección (tolera formatos ISO distintos).</summary>
+    public bool IsOccurrenceOf(string tipoAlerta, DateTimeOffset detectedAt) =>
+        TipoAlerta == tipoAlerta && IsoDateTime.Parse(DetectedAt) == detectedAt;
 
     /// <summary>Un incidente 'nuevo' sin documento (auto-doc desactivada) no cuenta como conocimiento.</summary>
     [JsonIgnore]

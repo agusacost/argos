@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { KpiCards, MttrChart } from './KpiCards';
 import { IncidentTable } from './IncidentTable';
-import { Activity, Zap, Cpu } from 'lucide-react';
+import { Activity, Zap, Cpu, FileQuestion } from 'lucide-react';
 import { useApp } from '@/types';
 import { getRecentActivity } from '@/api';
 import type { AuditEntry } from '@/api';
+import { summarizeAi } from '@/llmStatus';
+
+const AI_TONE_TEXT = { ok: 'text-cyan-400', fallback: 'text-amber-400', down: 'text-red-400' } as const;
+const MAX_PENDING_CHIPS = 3;
 
 export function DashboardView() {
-  const { incidents, metrics } = useApp();
+  const { incidents, metrics, llmHealth, openIncidents, setSelectedIncidentId } = useApp();
   const [activity, setActivity] = useState<AuditEntry[]>([]);
 
   useEffect(() => {
@@ -17,37 +21,62 @@ export function DashboardView() {
   const criticalCount = incidents.filter(
     (i) => i.severity === 'critical' && i.status !== 'resolved' && i.status !== 'documented'
   ).length;
-  const aiActiveCount = incidents.filter((i) => i.status === 'ai_analyzing').length;
+  const pending = incidents.filter((i) => i.status === 'undocumented');
+  const ai = summarizeAi(llmHealth);
 
   const byStatus = metrics?.by_status ?? {};
   const resolvedCount = byStatus['resuelto'] ?? 0;
   const investigatingCount = byStatus['pendiente'] ?? 0;
   const documentedCount = (byStatus['auto_documentado'] ?? 0) + (byStatus['documentado_previamente'] ?? 0);
+  const total = metrics?.total_incidents ?? 0;
+  const closedPct = total > 0 ? Math.round(((resolvedCount + documentedCount) / total) * 100) : 0;
 
   return (
     <div className="space-y-5">
       <KpiCards />
 
-      {/* AI Activity Banner */}
+      {/* Estado de la IA + pendientes */}
       <div className="bg-gradient-to-r from-cyan-500/8 via-blue-500/5 to-transparent border border-cyan-500/20 rounded-xl p-4 flex items-center gap-4">
         <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-md shadow-cyan-500/30 flex-shrink-0">
           <Cpu className="w-5 h-5 text-white" />
         </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-white">Argos IA está monitoreando activamente</h3>
-            <span className="flex items-center gap-1 text-[10px] font-medium text-cyan-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse-dot" />
-              {aiActiveCount} análisis en curso
-            </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-white">Argos IA analiza cada alerta contra la base de conocimiento (RAG)</h3>
+            {pending.length > 0 && (
+              <button
+                onClick={() => openIncidents('nuevo')}
+                className="flex items-center gap-1 text-[10px] font-medium text-amber-300 hover:text-amber-200"
+              >
+                <FileQuestion className="w-3 h-3" />
+                {pending.length} pendiente(s) de documentar
+              </button>
+            )}
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {criticalCount} incidente(s) crítico(s) activo(s) · Correlacionando métricas con base de conocimiento (RAG)
-          </p>
+          {pending.length > 0 ? (
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              {pending.slice(0, MAX_PENDING_CHIPS).map((i) => (
+                <button
+                  key={i.id}
+                  onClick={() => setSelectedIncidentId(i.id)}
+                  className="text-[11px] px-2 py-0.5 rounded-md bg-slate-950/50 border border-slate-800 text-slate-300 hover:border-amber-500/40 hover:text-white"
+                >
+                  {i.tipo_alerta}
+                </button>
+              ))}
+              {pending.length > MAX_PENDING_CHIPS && (
+                <span className="text-[11px] text-slate-500">+{pending.length - MAX_PENDING_CHIPS} más</span>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 mt-0.5">
+              {criticalCount} incidente(s) crítico(s) activo(s) · Sin incidentes pendientes de documentar
+            </p>
+          )}
         </div>
-        <div className="hidden md:flex items-center gap-2">
-          <Zap className="w-4 h-4 text-cyan-400" />
-          <span className="text-xs text-slate-400">Uptime IA: 99.99%</span>
+        <div className="hidden md:flex items-center gap-2" title={ai.detail}>
+          <Zap className={`w-4 h-4 ${AI_TONE_TEXT[ai.tone]}`} />
+          <span className={`text-xs ${AI_TONE_TEXT[ai.tone]}`}>{ai.label}</span>
         </div>
       </div>
 
@@ -91,11 +120,11 @@ export function DashboardView() {
             </div>
             <div className="mt-4 pt-4 border-t border-slate-800/50">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] text-slate-500">Total incidentes</span>
-                <span className="text-xs font-medium text-cyan-400">{metrics?.total_incidents ?? 0}</span>
+                <span className="text-[11px] text-slate-500">Total incidentes · {closedPct}% cerrados</span>
+                <span className="text-xs font-medium text-cyan-400">{total}</span>
               </div>
               <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full" style={{ width: '99.94%' }} />
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full" style={{ width: `${closedPct}%` }} />
               </div>
             </div>
           </div>

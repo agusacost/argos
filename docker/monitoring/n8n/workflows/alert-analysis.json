@@ -13,7 +13,7 @@
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
         "position": [
-          -80,
+          -200,
           300
         ],
         "webhookId": "argos-alerts",
@@ -31,11 +31,11 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          160,
+          0,
           300
         ],
         "parameters": {
-          "jsCode": "// Payload de Alertmanager. Aplica el umbral: si no se supera, devuelve [] y corta el flujo.\nconst body = ($input.first().json.body) || $input.first().json || {};\nconst alerts = Array.isArray(body.alerts) ? body.alerts : [];\nconst threshold = parseInt($env.ALERT_THRESHOLD || '3', 10);\nconst hasCritical = alerts.some(a => a.labels && a.labels.severity === 'critical');\nconst triggered = alerts.length >= threshold || hasCritical;\nif (!triggered) {\n  return [];\n}\nconst first = alerts[0] || {};\nconst ann = body.commonAnnotations || first.annotations || {};\nconst labels = body.commonLabels || first.labels || {};\nconst summary = ann.summary || labels.alertname || 'Alerta sin resumen';\nconst description = ann.description || '';\nconst alertname = labels.alertname || (first.labels && first.labels.alertname) || 'unknown';\nconst severity = labels.severity || (first.labels && first.labels.severity) || 'warning';\nreturn [{ json: {\n  summary,\n  description,\n  alertname,\n  severity,\n  alertsCount: alerts.length,\n  status: body.status || 'firing'\n} }];"
+          "jsCode": "// Payload de Alertmanager. Las resoluciones (status=resolved) no se analizan ni se notifican por email:\n// van a 'Resolve Incident'. A las alertas activas se les aplica el umbral: si no se supera, devuelve [] y corta.\nconst body = ($input.first().json.body) || $input.first().json || {};\nconst alerts = Array.isArray(body.alerts) ? body.alerts : [];\nconst status = body.status || 'firing';\nconst first = alerts[0] || {};\nconst ann = body.commonAnnotations || first.annotations || {};\nconst labels = body.commonLabels || first.labels || {};\nconst alertname = labels.alertname || (first.labels && first.labels.alertname) || 'unknown';\nconst severity = labels.severity || (first.labels && first.labels.severity) || 'warning';\nif (status !== 'resolved') {\n  const threshold = parseInt($env.ALERT_THRESHOLD || '3', 10);\n  const hasCritical = alerts.some(a => a.labels && a.labels.severity === 'critical');\n  if (!(alerts.length >= threshold || hasCritical)) return [];\n}\nconst summary = ann.summary || alertname || 'Alerta sin resumen';\nconst description = ann.description || '';\n// Mismo texto para buscar en el RAG y para guardar el incidente: así la próxima ocurrencia lo reconoce.\nconst query_text = description ? `${summary}. ${description}` : summary;\n// Alertmanager manda endsAt=0001-01-01 mientras la alerta sigue activa.\nconst validDate = (d) => (d && !String(d).startsWith('0001-')) ? d : null;\nreturn [{ json: {\n  summary, description, alertname, severity, query_text,\n  alertsCount: alerts.length,\n  status,\n  starts_at: validDate(first.startsAt) || new Date().toISOString(),\n  ends_at: validDate(first.endsAt)\n} }];"
         }
       },
       {
@@ -91,7 +91,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ { \"text\": ($('Prepare').item.json.summary + '. ' + $('Prepare').item.json.description), \"top_k\": 3 } }}",
+          "jsonBody": "={{ { \"text\": $('Prepare').item.json.query_text, \"top_k\": 3 } }}",
           "options": {}
         }
       },
@@ -105,20 +105,7 @@
           300
         ],
         "parameters": {
-          "jsCode": "// Combina la alerta (nodo Prepare) con el contexto RAG para armar el prompt del modelo LLM.\nconst prep = $('Prepare').item.json;\nconst rag = $json || {};\nconst results = Array.isArray(rag.results) ? rag.results.slice(0, 3) : [];\nconst contextLines = results.map((r, i) =>\n  `${i + 1}. [score ${Number(r.score).toFixed(3)} · ${r.clasificacion}] ${r.tipo_alerta}: ${r.resumen}\\n   Pasos: ${(r.pasos || []).join(' | ')}`\n).join('\\n');\nconst system = 'Sos un analista de AIOps. Dado el contexto de una alerta y datos históricos de incidentes, sintetizá el problema en términos técnicos claros y proponé pasos de resolución accionables y numerados. Sé conciso. Respondé en español. Si el contexto histórico aplica, referencialo.';\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\nContexto histórico (RAG, documentado=${rag.is_documented}):\\n${contextLines || 'Sin coincidencias relevantes.'}\\n\\nSintetizá el problema y proponé pasos de resolución.`;\nreturn [{ json: { system, user, prep, is_documented: !!rag.is_documented } }];"
-        }
-      },
-      {
-        "id": "route-llm",
-        "name": "Route LLM",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          1120,
-          300
-        ],
-        "parameters": {
-          "jsCode": "// Selecciona proveedor LLM según LLM_PROVIDER (gemini | anthropic) y construye la request.\n// Config de runtime del dashboard (nodo Get Config); si falló, fallback a env.\nconst cfg = $('Get Config').item.json || {};\nconst provider = (cfg.llm_provider || $env.LLM_PROVIDER || 'gemini').toLowerCase();\nconst { system, user } = $json;\nlet url, xApiKey, anthropicVersion, body;\nif (provider === 'gemini') {\n  const model = (provider === cfg.llm_provider && cfg.llm_model) || $env.GEMINI_MODEL || 'gemini-flash-latest';\n  const key = $env.GEMINI_API_KEY || '';\n  url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key;\n  xApiKey = '';\n  anthropicVersion = '';\n  body = {\n    system_instruction: { parts: [{ text: system }] },\n    contents: [{ role: 'user', parts: [{ text: user }] }],\n    generationConfig: { maxOutputTokens: 4096 } // gemini-flash-latest es thinking: los thoughts consumen este presupuesto\n  };\n} else {\n  url = 'https://api.anthropic.com/v1/messages';\n  const model = (provider === cfg.llm_provider && cfg.llm_model) || $env.CLAUDE_MODEL || 'claude-sonnet-4-6';\n  xApiKey = $env.ANTHROPIC_API_KEY || '';\n  anthropicVersion = '2023-06-01';\n  body = {\n    model,\n    max_tokens: 1024,\n    system,\n    messages: [{ role: 'user', content: user }]\n  };\n}\nreturn [{ json: { _provider: provider, _url: url, _x_api_key: xApiKey, _anthropic_version: anthropicVersion, _body: body } }];"
+          "jsCode": "// Combina la alerta (nodo Prepare) con el contexto RAG para armar el prompt del modelo LLM.\nconst prep = $('Prepare').item.json;\nconst rag = $json || {};\nconst results = Array.isArray(rag.results) ? rag.results.slice(0, 3) : [];\n// Solución de cada match: los runbooks traen 'pasos'; los auto-documentados, solo 'documento' (se usa su sección\n// de pasos, o el inicio del documento): así el análisis aprovecha lo que la plataforma aprendió.\nconst solutionOf = (r) => {\n  const pasos = (r.pasos || []).filter(Boolean);\n  if (pasos.length) return `Pasos: ${pasos.join(' | ')}`;\n  const doc = String(r.documento || '').trim();\n  if (!doc) return 'Sin solución registrada.';\n  const m = doc.match(/##\\s*Pasos de resoluci[oó]n[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)/i);\n  const text = (m ? m[1] : doc).trim().replace(/\\n{2,}/g, '\\n');\n  return `Solución documentada:\\n${text.length > 900 ? text.slice(0, 900) + '…' : text}`;\n};\nconst contextLines = results.map((r, i) =>\n  `${i + 1}. [score ${Number(r.score).toFixed(3)} · ${r.clasificacion}] ${r.tipo_alerta}: ${r.resumen}\\n   ${solutionOf(r).replace(/\\n/g, '\\n   ')}`\n).join('\\n');\nconst system = 'Sos un analista de AIOps. Dado el contexto de una alerta y datos históricos de incidentes, sintetizá el problema en términos técnicos claros y proponé pasos de resolución accionables y numerados. Sé conciso. Respondé en español. Si el contexto histórico aplica, referencialo. Entorno de Argos: un único host con Docker Compose (proyecto argos-platform), sin Kubernetes ni systemd. Contenedores: nginx-proxy (reverse proxy, puerto 80), membresia-api (API .NET, upstream de Nginx; en el host :5000), membresia-sqlserver (SQL Server de la API), nginx-prometheus-exporter (:9113), node-exporter (:9100), cadvisor (:8080), alloy (envía los logs de Nginx a Loki), argos-platform-prometheus-1, argos-platform-loki-1, argos-platform-alertmanager-1, argos-platform-grafana-1. En los comandos usá esos nombres reales (docker ps -a, docker logs, docker start/restart).';\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\nContexto histórico (RAG, documentado=${rag.is_documented}):\\n${contextLines || 'Sin coincidencias relevantes.'}\\n\\nSintetizá el problema y proponé pasos de resolución.`;\nreturn [{ json: { system, user, prep, is_documented: !!rag.is_documented } }];"
         }
       },
       {
@@ -127,37 +114,29 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          1360,
+          1240,
           300
         ],
-        "retryOnFail": true,
-        "maxTries": 3,
-        "waitBetweenTries": 2000,
+        "onError": "continueRegularOutput",
         "parameters": {
           "method": "POST",
-          "url": "={{ $json._url }}",
+          "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/internal/llm/generate",
           "sendHeaders": true,
           "specifyHeaders": "keypair",
           "headerParameters": {
             "parameters": [
               {
-                "name": "x-api-key",
-                "value": "={{ $json._x_api_key }}"
-              },
-              {
-                "name": "anthropic-version",
-                "value": "={{ $json._anthropic_version }}"
-              },
-              {
-                "name": "content-type",
-                "value": "application/json"
+                "name": "X-Argos-Token",
+                "value": "={{ $env.ARGOS_INTERNAL_TOKEN || '' }}"
               }
             ]
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ $json._body }}",
-          "options": {}
+          "jsonBody": "={{ { system: $json.system, user: $json.user, purpose: 'analysis', alertname: $json.prep.alertname, severity: $json.prep.severity } }}",
+          "options": {
+            "timeout": 290000
+          }
         }
       },
       {
@@ -170,7 +149,7 @@
           300
         ],
         "parameters": {
-          "jsCode": "// Extrae el texto según el proveedor: Gemini (candidates[]) o Anthropic (content[]).\nconst resp = $json || {};\nlet text;\nif (Array.isArray(resp.candidates)) {\n  text = (resp.candidates[0]?.content?.parts?.[0]?.text || '').trim() || 'Sin respuesta del modelo.';\n} else if (Array.isArray(resp.content)) {\n  const blocks = resp.content;\n  text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\\n').trim() || 'Sin respuesta del modelo.';\n} else {\n  text = 'Sin respuesta del modelo.';\n}\nconst bp = $('Build Prompt').item.json;\nconst prep = bp.prep;\nconst isNew = bp.is_documented === false;\nconst autoDoc = ($('Get Config').item.json || {}).auto_doc_enabled !== false;\nconst badgeText = autoDoc ? '🆕 Incidente nuevo — auto-documentado por Argos' : '🆕 Incidente nuevo — pendiente de documentar (auto-documentación desactivada)';\nconst badge = isNew ? `<p style=\"color:#b45309\"><strong>${badgeText}</strong></p>` : '';\nconst html = `<h2>[ALERTA] ${prep.alertname} — ${prep.severity}</h2>` + badge +\n  `<p><strong>Resumen:</strong> ${prep.summary}</p>` +\n  `<pre style=\"white-space:pre-wrap;font-family:inherit\">${text}</pre>` +\n  `<hr><small>Generado por Argos (n8n + IA).</small>`;\nreturn [{ json: { analysis: text, html, alertname: prep.alertname, severity: prep.severity, summary: prep.summary, is_documented: bp.is_documented } }];"
+          "jsCode": "// Respuesta de rag-api /internal/llm/generate (cadena de fallback entre proveedores). Si fallaron todos\n// (onError=continue), la alerta sigue igual: email con aviso y el incidente queda 'nuevo' para documentar a mano.\nconst resp = $json || {};\nconst llmOk = typeof resp.text === 'string' && resp.text.trim().length > 0;\nconst errorMsg = (resp.error && (resp.error.message || resp.error.description)) || 'sin detalle';\nconst text = llmOk\n  ? resp.text.trim()\n  : `⚠️ Análisis IA no disponible: ningún proveedor LLM respondió (${errorMsg}). El incidente quedó registrado en Argos para documentarlo desde el dashboard.`;\nconst bp = $('Build Prompt').item.json;\nconst prep = bp.prep;\nconst isNew = bp.is_documented === false;\nconst autoDoc = ($('Get Config').item.json || {}).auto_doc_enabled !== false;\nconst badgeText = autoDoc && llmOk\n  ? '🆕 Incidente nuevo — auto-documentado por Argos'\n  : '🆕 Incidente nuevo — pendiente de documentar';\nconst badge = isNew ? `<p style=\"color:#b45309\"><strong>${badgeText}</strong></p>` : '';\nconst via = llmOk ? `<small>IA: ${resp.provider}/${resp.model}${resp.fallback_used ? ' (proveedor de respaldo)' : ''}</small><br>` : '';\nconst html = `<h2>[ALERTA] ${prep.alertname} — ${prep.severity}</h2>` + badge +\n  `<p><strong>Resumen:</strong> ${prep.summary}</p>` +\n  `<pre style=\"white-space:pre-wrap;font-family:inherit\">${text}</pre>` +\n  `<hr>${via}<small>Generado por Argos (n8n + IA).</small>`;\nreturn [{ json: {\n  analysis: text, html, alertname: prep.alertname, severity: prep.severity, summary: prep.summary,\n  is_documented: bp.is_documented, llm_ok: llmOk, llm_provider: resp.provider || null,\n  llm_model: resp.model || null, fallback_used: !!resp.fallback_used\n} }];"
         }
       },
       {
@@ -224,7 +203,7 @@
             "conditions": [
               {
                 "id": "cond-auto-doc",
-                "leftValue": "={{ ($('Get Config').item.json || {}).auto_doc_enabled !== false }}",
+                "leftValue": "={{ ($('Get Config').item.json || {}).auto_doc_enabled !== false && $json.llm_ok === true }}",
                 "rightValue": "",
                 "operator": {
                   "type": "boolean",
@@ -247,7 +226,7 @@
           660
         ],
         "parameters": {
-          "jsCode": "// Auto-documentación desactivada en el dashboard: se registra el incidente NUEVO sin documento\n// (estado 'nuevo') para documentarlo a mano desde el dashboard ('Generar documentación').\nconst prep = $('Build Prompt').item.json.prep;\nconst incident = {\n  tipo_alerta: prep.alertname,\n  resumen: prep.summary,\n  pasos: [],\n  severity: prep.severity,\n  fuente: 'alertmanager',\n  estado: 'nuevo',\n  detected_at: new Date().toISOString()\n};\nreturn [{ json: { incident } }];"
+          "jsCode": "// Sin documentación automática (auto-doc desactivada en el dashboard o IA caída en el análisis):\n// se registra el incidente NUEVO sin documento (estado 'nuevo') para documentarlo a mano ('Generar documentación').\nconst prep = $('Build Prompt').item.json.prep;\nconst incident = {\n  tipo_alerta: prep.alertname,\n  resumen: prep.query_text,\n  pasos: [],\n  severity: prep.severity,\n  fuente: 'alertmanager',\n  estado: 'nuevo',\n  detected_at: prep.starts_at\n};\nreturn [{ json: { incident } }];"
         }
       },
       {
@@ -260,20 +239,7 @@
           460
         ],
         "parameters": {
-          "jsCode": "// Incidente NUEVO (sin match en la KB): arma el prompt para generar documentación técnica.\nconst prep = $('Build Prompt').item.json.prep;\nconst system = 'Sos un ingeniero SRE documentando un incidente NUEVO para la base de conocimiento de Argos. Generá documentación técnica concisa en Markdown con estas secciones exactas: \"# Título\", \"## Descripción\", \"## Causa raíz probable\", \"## Pasos de resolución\" (lista numerada), \"## Prevención\". Respondé en español y devolvé SOLO el Markdown, sin texto adicional.';\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\nEste incidente NO existe en la base de conocimiento de Argos. Generá su documentación técnica completa.`;\nreturn [{ json: { system, user } }];"
-        }
-      },
-      {
-        "id": "route-doc-llm",
-        "name": "Route Doc LLM",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          2560,
-          460
-        ],
-        "parameters": {
-          "jsCode": "// Mismo ruteo dual-provider que 'Route LLM', reutilizado para la generación de documentación.\n// Config de runtime del dashboard (nodo Get Config); si falló, fallback a env.\nconst cfg = $('Get Config').item.json || {};\nconst provider = (cfg.llm_provider || $env.LLM_PROVIDER || 'gemini').toLowerCase();\nconst { system, user } = $json;\nlet url, xApiKey, anthropicVersion, body;\nif (provider === 'gemini') {\n  const model = (provider === cfg.llm_provider && cfg.llm_model) || $env.GEMINI_MODEL || 'gemini-flash-latest';\n  const key = $env.GEMINI_API_KEY || '';\n  url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key;\n  xApiKey = '';\n  anthropicVersion = '';\n  body = {\n    system_instruction: { parts: [{ text: system }] },\n    contents: [{ role: 'user', parts: [{ text: user }] }],\n    generationConfig: { maxOutputTokens: 6144 } // incluye thinking tokens (con 1536 el doc salía truncado)\n  };\n} else {\n  url = 'https://api.anthropic.com/v1/messages';\n  const model = (provider === cfg.llm_provider && cfg.llm_model) || $env.CLAUDE_MODEL || 'claude-sonnet-4-6';\n  xApiKey = $env.ANTHROPIC_API_KEY || '';\n  anthropicVersion = '2023-06-01';\n  body = {\n    model,\n    max_tokens: 1536,\n    system,\n    messages: [{ role: 'user', content: user }]\n  };\n}\nreturn [{ json: { _provider: provider, _url: url, _x_api_key: xApiKey, _anthropic_version: anthropicVersion, _body: body } }];"
+          "jsCode": "// Incidente NUEVO (sin match en la KB): arma el prompt para generar documentación técnica.\nconst prep = $('Build Prompt').item.json.prep;\nconst system = 'Sos un ingeniero SRE documentando un incidente NUEVO para la base de conocimiento de Argos. Generá documentación técnica concisa en Markdown con estas secciones exactas: \"# Título\", \"## Descripción\", \"## Causa raíz probable\", \"## Pasos de resolución\" (lista numerada), \"## Prevención\". Respondé en español y devolvé SOLO el Markdown, sin texto adicional. Entorno de Argos: un único host con Docker Compose (proyecto argos-platform), sin Kubernetes ni systemd. Contenedores: nginx-proxy (reverse proxy, puerto 80), membresia-api (API .NET, upstream de Nginx; en el host :5000), membresia-sqlserver (SQL Server de la API), nginx-prometheus-exporter (:9113), node-exporter (:9100), cadvisor (:8080), alloy (envía los logs de Nginx a Loki), argos-platform-prometheus-1, argos-platform-loki-1, argos-platform-alertmanager-1, argos-platform-grafana-1. En los comandos usá esos nombres reales (docker ps -a, docker logs, docker start/restart).';\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\nEste incidente NO existe en la base de conocimiento de Argos. Generá su documentación técnica completa.`;\nreturn [{ json: { system, user } }];"
         }
       },
       {
@@ -282,37 +248,29 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          2800,
+          2680,
           460
         ],
-        "retryOnFail": true,
-        "maxTries": 3,
-        "waitBetweenTries": 2000,
+        "onError": "continueRegularOutput",
         "parameters": {
           "method": "POST",
-          "url": "={{ $json._url }}",
+          "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/internal/llm/generate",
           "sendHeaders": true,
           "specifyHeaders": "keypair",
           "headerParameters": {
             "parameters": [
               {
-                "name": "x-api-key",
-                "value": "={{ $json._x_api_key }}"
-              },
-              {
-                "name": "anthropic-version",
-                "value": "={{ $json._anthropic_version }}"
-              },
-              {
-                "name": "content-type",
-                "value": "application/json"
+                "name": "X-Argos-Token",
+                "value": "={{ $env.ARGOS_INTERNAL_TOKEN || '' }}"
               }
             ]
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ $json._body }}",
-          "options": {}
+          "jsonBody": "={{ { system: $json.system, user: $json.user, purpose: 'document', alertname: $('Build Prompt').item.json.prep.alertname, severity: $('Build Prompt').item.json.prep.severity } }}",
+          "options": {
+            "timeout": 290000
+          }
         }
       },
       {
@@ -325,7 +283,7 @@
           460
         ],
         "parameters": {
-          "jsCode": "// Extrae el Markdown generado y arma el payload de incidente para persistir en el RAG.\nconst resp = $json || {};\nlet text;\nif (Array.isArray(resp.candidates)) {\n  text = (resp.candidates[0]?.content?.parts?.[0]?.text || '').trim();\n} else if (Array.isArray(resp.content)) {\n  text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('\\n').trim();\n} else {\n  text = '';\n}\nconst prep = $('Build Prompt').item.json.prep;\nconst incident = {\n  tipo_alerta: prep.alertname,\n  resumen: prep.summary,\n  pasos: [],\n  documento: text || 'Sin documentación generada.',\n  severity: prep.severity,\n  fuente: 'auto-generado',\n  estado: 'auto_documentado',\n  detected_at: new Date().toISOString()\n};\nreturn [{ json: { incident } }];"
+          "jsCode": "// Markdown generado por rag-api (cadena de fallback). Si falló toda la cadena, el incidente se registra igual\n// como 'nuevo' sin documento, para documentarlo después desde el dashboard.\nconst resp = $json || {};\nconst text = typeof resp.text === 'string' ? resp.text.trim() : '';\nconst documented = text.length > 0;\nconst prep = $('Build Prompt').item.json.prep;\nconst incident = {\n  tipo_alerta: prep.alertname,\n  resumen: prep.query_text,\n  pasos: [],\n  severity: prep.severity,\n  fuente: documented ? 'auto-generado' : 'alertmanager',\n  estado: documented ? 'auto_documentado' : 'nuevo',\n  detected_at: prep.starts_at\n};\nif (documented) incident.documento = text;\nreturn [{ json: { incident } }];"
         }
       },
       {
@@ -424,6 +382,99 @@
             "name": "SMTP account"
           }
         }
+      },
+      {
+        "id": "is-resolved",
+        "name": "Resolved?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          200,
+          300
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "typeValidation": "loose"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "cond-is-resolved",
+                "leftValue": "={{ $json.status === 'resolved' }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "resolve-incident",
+        "name": "Resolve Incident",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          420,
+          540
+        ],
+        "onError": "continueRegularOutput",
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/internal/incidents/resolve",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Argos-Token",
+                "value": "={{ $env.ARGOS_INTERNAL_TOKEN || '' }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { tipo_alerta: $json.alertname, detected_at: $json.starts_at, resolved_at: $json.ends_at } }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "register-occurrence",
+        "name": "Register Occurrence",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2080,
+          140
+        ],
+        "onError": "continueRegularOutput",
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/internal/incidents/occurrence",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Argos-Token",
+                "value": "={{ $env.ARGOS_INTERNAL_TOKEN || '' }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { tipo_alerta: $('Prepare').item.json.alertname, resumen: $('Prepare').item.json.query_text, severity: $('Prepare').item.json.severity, detected_at: $('Prepare').item.json.starts_at } }}",
+          "options": {}
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000
       }
     ],
     "connections": {
@@ -442,7 +493,7 @@
         "main": [
           [
             {
-              "node": "Get Config",
+              "node": "Resolved?",
               "type": "main",
               "index": 0
             }
@@ -461,17 +512,6 @@
         ]
       },
       "Build Prompt": {
-        "main": [
-          [
-            {
-              "node": "Route LLM",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Route LLM": {
         "main": [
           [
             {
@@ -515,7 +555,7 @@
           ],
           [
             {
-              "node": "Get Recipients",
+              "node": "Register Occurrence",
               "type": "main",
               "index": 0
             }
@@ -523,17 +563,6 @@
         ]
       },
       "Build Doc Prompt": {
-        "main": [
-          [
-            {
-              "node": "Route Doc LLM",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Route Doc LLM": {
         "main": [
           [
             {
@@ -633,6 +662,35 @@
           [
             {
               "node": "Persist Incident",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Resolved?": {
+        "main": [
+          [
+            {
+              "node": "Resolve Incident",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Get Config",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Register Occurrence": {
+        "main": [
+          [
+            {
+              "node": "Get Recipients",
               "type": "main",
               "index": 0
             }

@@ -1,9 +1,41 @@
-import { Clock, AlertTriangle, FileText, TrendingDown, TrendingUp, Cpu } from 'lucide-react';
+import { Clock, AlertTriangle, FileText, TrendingDown, TrendingUp, FileQuestion, Minus } from 'lucide-react';
+import type { ElementType } from 'react';
 import { Sparkline } from './Sparkline';
 import { useApp } from '@/types';
+import type { Metrics } from '@/types';
+
+type Tone = 'good' | 'bad' | 'neutral';
+
+interface Kpi {
+  label: string;
+  value: string;
+  sublabel?: string;
+  change: string;
+  changeTone: Tone;
+  changeIcon: ElementType;
+  /** Explicación al pasar el mouse sobre la tarjeta. */
+  hint: string;
+  icon: ElementType;
+  color: string;
+  sparkline: number[];
+  onClick?: () => void;
+}
+
+const TONE_CLASS: Record<Tone, string> = {
+  good: 'text-emerald-400',
+  bad: 'text-red-400',
+  neutral: 'text-slate-400',
+};
+
+function mttrChange(trend: Metrics['mttr_trend'] | undefined): Pick<Kpi, 'change' | 'changeTone' | 'changeIcon'> {
+  if (trend === 'improving') return { change: 'Mejorando', changeTone: 'good', changeIcon: TrendingDown };
+  if (trend === 'degrading') return { change: 'Empeorando', changeTone: 'bad', changeIcon: TrendingUp };
+  if (trend === 'stable') return { change: 'Estable', changeTone: 'neutral', changeIcon: Minus };
+  return { change: 'Sin historial', changeTone: 'neutral', changeIcon: Minus };
+}
 
 export function KpiCards() {
-  const { metrics, incidents } = useApp();
+  const { metrics, incidents, openIncidents } = useApp();
 
   const mttrVal = metrics?.mttr_average_minutes != null
     ? `${Math.round(metrics.mttr_average_minutes)} min`
@@ -14,26 +46,26 @@ export function KpiCards() {
   const volumeSparkline = (metrics?.incidents_per_day ?? []).slice(-8).map((d) => d.count);
 
   const autoDocCount = (metrics?.by_status['auto_documentado'] ?? 0);
-  const aiActiveCount = incidents.filter((i) => i.status === 'ai_analyzing').length;
-  const mttrSparkline = metrics
-    ? Array(8).fill(Math.round(metrics.mttr_average_minutes ?? 0))
-    : [0, 0, 0, 0, 0, 0, 0, 0];
+  const pendingCount = incidents.filter((i) => i.status === 'undocumented').length;
+  const mttrSparkline = (metrics?.mttr_per_day ?? []).map((d) => d.average_minutes);
 
-  const kpis = [
+  const kpis: Kpi[] = [
     {
-      label: 'MTTR Actual',
+      label: 'MTTR promedio',
       value: mttrVal,
-      change: metrics?.recent_trend === 'improving' ? 'Mejorando' : metrics?.recent_trend === 'degrading' ? 'Empeorando' : 'Estable',
-      trendDown: metrics?.recent_trend === 'improving',
+      ...mttrChange(metrics?.mttr_trend),
+      hint: 'Tiempo medio entre la detección y la resolución. La tendencia compara los últimos 7 días con los 7 anteriores.',
       icon: Clock,
       color: 'cyan',
-      sparkline: mttrSparkline,
+      sparkline: mttrSparkline.length ? mttrSparkline : [0],
     },
     {
       label: 'Incidentes Hoy',
       value: String(todayCount),
       change: `${metrics?.total_incidents ?? 0} total`,
-      trendDown: false,
+      changeTone: 'neutral',
+      changeIcon: AlertTriangle,
+      hint: 'Incidentes detectados hoy (UTC).',
       icon: AlertTriangle,
       color: 'amber',
       sparkline: volumeSparkline.length ? volumeSparkline : [0],
@@ -43,21 +75,25 @@ export function KpiCards() {
       value: String(autoDocCount),
       sublabel: 'total',
       change: '+IA',
-      trendDown: false,
+      changeTone: 'good',
+      changeIcon: TrendingUp,
+      hint: 'Incidentes nuevos que la IA documentó automáticamente.',
       icon: FileText,
       color: 'emerald',
       sparkline: Array(8).fill(autoDocCount),
     },
     {
-      label: 'IA Análisis Activos',
-      value: String(aiActiveCount),
-      sublabel: 'en proceso',
-      change: 'Live',
-      trendDown: false,
-      isLive: true,
-      icon: Cpu,
+      label: 'Pendientes de documentar',
+      value: String(pendingCount),
+      sublabel: 'ver lista',
+      change: pendingCount > 0 ? 'Requieren acción' : 'Al día',
+      changeTone: pendingCount > 0 ? 'bad' : 'good',
+      changeIcon: pendingCount > 0 ? FileQuestion : Minus,
+      hint: 'Incidentes nuevos sin documentación (auto-doc apagada o IA no disponible). Click para verlos.',
+      icon: FileQuestion,
       color: 'blue',
-      sparkline: Array(8).fill(aiActiveCount),
+      sparkline: Array(8).fill(pendingCount),
+      onClick: () => openIncidents('nuevo'),
     },
   ];
 
@@ -73,28 +109,21 @@ export function KpiCards() {
       {kpis.map((kpi) => {
         const c = colorMap[kpi.color];
         const Icon = kpi.icon;
+        const ChangeIcon = kpi.changeIcon;
         return (
           <div
             key={kpi.label}
-            className={`bg-slate-900/60 border ${c.border} rounded-xl p-5 hover:bg-slate-900/80 transition-all group relative overflow-hidden`}
+            title={kpi.hint}
+            onClick={kpi.onClick}
+            role={kpi.onClick ? 'button' : undefined}
+            className={`bg-slate-900/60 border ${c.border} rounded-xl p-5 hover:bg-slate-900/80 transition-all group relative overflow-hidden ${kpi.onClick ? 'cursor-pointer' : ''}`}
           >
             <div className="flex items-start justify-between mb-3">
               <div className={`w-10 h-10 rounded-lg ${c.bg} flex items-center justify-center`}>
                 <Icon className={`w-5 h-5 ${c.text}`} />
               </div>
-              <div className={`flex items-center gap-1 text-xs font-medium ${
-                kpi.isLive ? c.text : kpi.trendDown ? 'text-emerald-400' : kpi.color === 'amber' ? 'text-amber-400' : 'text-emerald-400'
-              }`}>
-                {kpi.isLive ? (
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse-dot" />
-                    {kpi.change}
-                  </span>
-                ) : kpi.trendDown ? (
-                  <><TrendingDown className="w-3 h-3" />{kpi.change}</>
-                ) : (
-                  <><TrendingUp className="w-3 h-3" />{kpi.change}</>
-                )}
+              <div className={`flex items-center gap-1 text-xs font-medium ${TONE_CLASS[kpi.changeTone]}`}>
+                <ChangeIcon className="w-3 h-3" />{kpi.change}
               </div>
             </div>
             <div className="flex items-end justify-between">
@@ -102,7 +131,7 @@ export function KpiCards() {
                 <p className="text-2xl font-bold text-white tracking-tight">{kpi.value}</p>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {kpi.label}
-                  {'sublabel' in kpi && kpi.sublabel && <span className="text-slate-600"> · {kpi.sublabel}</span>}
+                  {kpi.sublabel && <span className="text-slate-600"> · {kpi.sublabel}</span>}
                 </p>
               </div>
               <div className="opacity-60 group-hover:opacity-100 transition-opacity">
@@ -188,8 +217,8 @@ export function MttrChart() {
             <span className="text-[11px] text-slate-400">Histórico</span>
           </div>
         </div>
-        <span className="text-[11px] text-slate-500">
-          Tendencia: <span className={
+        <span className="text-[11px] text-slate-500" title="Cantidad de incidentes: primera mitad de los días contra la segunda">
+          Tendencia de volumen: <span className={
             metrics?.recent_trend === 'improving' ? 'text-emerald-400' :
             metrics?.recent_trend === 'degrading' ? 'text-red-400' : 'text-slate-400'
           }>

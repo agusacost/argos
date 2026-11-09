@@ -28,6 +28,7 @@ public sealed class SeedService(
         return count;
     }
 
+    // Solo los que faltan: re-guardarlos en cada arranque les cambiaba la fecha y pisaba lo editado.
     private async Task<int> SaveAllAsync(IEnumerable<Incident> items, string kind)
     {
         var count = 0;
@@ -36,8 +37,7 @@ public sealed class SeedService(
             try
             {
                 incident.Fecha ??= clock.UtcNowNaive();
-                await incidents.SaveAsync(incident);
-                count++;
+                if (await incidents.SaveIfAbsentAsync(incident)) count++;
             }
             catch (Exception ex)
             {

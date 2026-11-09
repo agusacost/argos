@@ -9,4 +9,7 @@ public interface IIncidentRepository : IRepository<Incident>
 
     /// <summary>Incidentes que cumplen los filtros por campo (estado, estados, tipo, fuente).</summary>
     Task<IReadOnlyList<Incident>> FindAsync(IncidentFilter filter);
+
+    /// <summary>Guarda solo si no existe un punto con el mismo id natural; false si ya estaba.</summary>
+    Task<bool> SaveIfAbsentAsync(Incident incident);
 }

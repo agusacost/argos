@@ -1,13 +1,23 @@
+using Argos.Business.Services.Notifications;
 using Argos.Business.Services.Settings;
 using Argos.Common.Time;
 using Argos.Entities;
 using Argos.Entities.Dtos;
 using Argos.Repository.Repositories;
+using Microsoft.Extensions.Logging;
 
 namespace Argos.Business.Services.Rag;
 
-public sealed class RagService(IIncidentRepository incidents, ISettingsService settings, IClock clock) : IRagService
+public sealed class RagService(
+    IIncidentRepository incidents,
+    ISettingsService settings,
+    INotificationService notifications,
+    IClock clock,
+    ILogger<RagService> log) : IRagService
 {
+    // Fuentes con las que n8n registra los incidentes (pendiente o auto-documentado).
+    private static readonly string[] PipelineSources = ["alertmanager", "auto-generado"];
+
     public async Task<QueryResponse> QueryAsync(QueryRequest request)
     {
         var text = request.Text!;
@@ -34,6 +44,20 @@ public sealed class RagService(IIncidentRepository incidents, ISettingsService s
             ResolvedAt = request.ResolvedAt,
             MttrMinutes = request.MttrMinutes,
         });
+        if (PipelineSources.Contains(incident.Fuente)) await NotifyArrivalAsync(incident);
         return new UpsertResponse(incident.Id!, incident.TipoAlerta);
+    }
+
+    // El incidente ya quedó guardado: un aviso que falla no debe hacer fallar el alta.
+    private async Task NotifyArrivalAsync(Incident incident)
+    {
+        try
+        {
+            await notifications.NotifyIncidentArrivalAsync(incident);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning("[upsert] no se pudo guardar la notificación de {Alert}: {Error}", incident.TipoAlerta, ex.Message);
+        }
     }
 }

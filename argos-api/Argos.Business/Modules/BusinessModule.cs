@@ -26,12 +26,15 @@ public sealed class BusinessModule : Module
         // Servicios
         builder.RegisterType<AuthService>().As<IAuthService>().SingleInstance();
         builder.RegisterType<UserService>().As<IUserService>().SingleInstance();
+        builder.RegisterType<LlmHealthTracker>().As<ILlmHealthTracker>().SingleInstance();
         builder.RegisterType<LlmService>().As<ILlmService>().SingleInstance();
+        builder.RegisterType<PipelineLlmService>().As<IPipelineLlmService>().SingleInstance();
         builder.RegisterType<SettingsValidator>().As<ISettingsValidator>().SingleInstance();
         builder.RegisterType<SettingsService>().As<ISettingsService>().SingleInstance();
         builder.RegisterType<RagService>().As<IRagService>().SingleInstance();
         builder.RegisterType<IncidentMetricsCalculator>().As<IIncidentMetricsCalculator>().SingleInstance();
         builder.RegisterType<IncidentService>().As<IIncidentService>().SingleInstance();
+        builder.RegisterType<AlertLifecycleService>().As<IAlertLifecycleService>().SingleInstance();
         builder.RegisterType<AuditService>().As<IAuditService>().SingleInstance();
         builder.RegisterType<NotificationService>().As<INotificationService>().SingleInstance();
         builder.RegisterType<AlertComponentResolver>().As<IAlertComponentResolver>().SingleInstance();

@@ -1,7 +1,7 @@
 import type { IncidentSummary, IncidentDetail, Severity, UIStatus, IncidentVM, ResolutionStep } from './types';
 
 const ESTADO_TO_STATUS: Record<string, UIStatus> = {
-  nuevo: 'ai_analyzing',
+  nuevo: 'undocumented',
   pendiente: 'investigating',
   resuelto: 'resolved',
   auto_documentado: 'documented',

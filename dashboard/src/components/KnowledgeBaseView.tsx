@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BookOpen, Search, FileText, Cpu, ChevronRight, Plus, Sparkles, Database } from 'lucide-react';
 import { useApp } from '@/types';
 import type { IncidentSummary } from '@/types';
-import { listKnowledgeBase } from '@/api';
+import { getSettings, listKnowledgeBase } from '@/api';
 import { deriveComponent } from '@/adapters';
 
 function fmtDate(iso?: string): string {
@@ -22,6 +22,13 @@ export function KnowledgeBaseView() {
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
+  const [threshold, setThreshold] = useState<number | null>(null);
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => setThreshold(s.similarity_threshold))
+      .catch(() => setThreshold(null));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -58,7 +65,7 @@ export function KnowledgeBaseView() {
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-lg font-bold text-cyan-300">0.63</p>
+            <p className="text-lg font-bold text-cyan-300">{threshold != null ? threshold.toFixed(2) : '—'}</p>
             <p className="text-[10px] text-slate-500">Umbral sim.</p>
           </div>
           <div className="w-px h-10 bg-slate-800" />

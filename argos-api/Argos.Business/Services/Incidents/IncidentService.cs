@@ -58,25 +58,16 @@ public sealed class IncidentService(
     public async Task<Incident> GenerateDocumentationAsync(string incidentId, CurrentUser currentUser)
     {
         var incident = await GetAsync(incidentId);
-        var selection = llm.Resolve(await settings.GetAsync());
-        string markdown;
-        try
-        {
-            markdown = await llm.GenerateIncidentDocumentAsync(selection, incident);
-        }
-        catch (Exception ex)
-        {
-            throw new UpstreamServiceException($"Error al llamar al LLM: {ex.Message}", ex);
-        }
+        var generation = await llm.GenerateIncidentDocumentAsync(await settings.GetAsync(), incident);
 
         // Se relee: la llamada al LLM tarda y el incidente pudo cambiar mientras tanto.
         var updated = await incidents.GetByIdAsync(incidentId)
                       ?? throw new NotFoundException("Incidente no encontrado tras actualización");
-        updated.ApplyChanges(estado: IncidentStates.AutoDocumentado, resolvedAt: clock.UtcNowNaive(), documento: markdown);
+        updated.ApplyChanges(estado: IncidentStates.AutoDocumentado, resolvedAt: clock.UtcNowNaive(), documento: generation.Text);
         await incidents.UpdateAsync(updated);
 
         await audit.RecordAsync(incidentId, string.IsNullOrEmpty(currentUser.Email) ? SystemUser : currentUser.Email,
-            "Documentación generada con LLM y aprobada");
+            $"Documentación generada con LLM ({generation.Provider}/{generation.Model}) y aprobada");
         return updated;
     }
 
