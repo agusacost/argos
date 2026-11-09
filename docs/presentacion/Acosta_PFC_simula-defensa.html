@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Argos — Simulación de defensa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b1020; --panel:#121a33; --panel2:#18224a; --ink:#e8ecf8; --muted:#9aa6c8;
+  --accent:#5b8cff; --accent2:#22d3a6; --warn:#f5b54a; --crit:#ff5d6c; --line:#2a3566;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif}
+.deck{position:relative;width:100vw;height:100vh;overflow:hidden}
+.slide{position:absolute;inset:0;padding:5vh 6vw 9vh;display:none;flex-direction:column;gap:2.4vh;font-size:clamp(20px,1.6vw,30px);line-height:1.35}
+.slide.active{display:flex}
+.tag{font-size:.62em;letter-spacing:.14em;text-transform:uppercase;color:var(--accent2);font-weight:600}
+h1{font-size:2.3em;font-weight:800;line-height:1.1}
+h2{font-size:1.65em;font-weight:800;line-height:1.15}
+h3{font-size:1.05em;font-weight:600;color:var(--accent)}
+p,li{color:var(--ink)}
+.muted{color:var(--muted)}
+ul{padding-left:1.1em;display:flex;flex-direction:column;gap:.9vh}
+li::marker{color:var(--accent2)}
+.grid{display:grid;gap:2vw}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:2vh 1.4vw;display:flex;flex-direction:column;gap:1vh}
+.card.hl{border-color:var(--accent2)}
+.big{font-size:2.2em;font-weight:800;color:var(--accent2);line-height:1}
+.mono,code{font-family:"JetBrains Mono",monospace;font-size:.82em}
+code{background:var(--panel2);padding:.05em .35em;border-radius:6px;color:#cfe0ff}
+table{width:100%;border-collapse:collapse;font-size:.78em}
+th,td{text-align:left;padding:.7vh .8vw;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.9em;text-transform:uppercase;letter-spacing:.05em}
+.pill{display:inline-block;padding:.05em .55em;border-radius:99px;font-size:.78em;font-weight:600}
+.ok{background:#173d33;color:var(--accent2)}.wip{background:#3f3215;color:var(--warn)}.no{background:#45202a;color:var(--crit)}
+.w{color:var(--warn)}.c{color:var(--crit)}
+.bar{height:.7em;background:var(--panel2);border-radius:99px;overflow:hidden;min-width:8vw}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.flow{display:flex;align-items:stretch;gap:.6vw;flex-wrap:wrap}
+.flow .step{flex:1;min-width:9vw;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1.4vh .8vw;font-size:.78em;text-align:center}
+.flow .step b{display:block;color:var(--accent);margin-bottom:.4vh}
+.arrow{align-self:center;color:var(--muted);font-size:1.2em}
+.cover{justify-content:center;gap:3vh}
+.cover img{width:9vw;min-width:90px}
+.foot{position:absolute;left:6vw;right:6vw;bottom:3vh;display:flex;justify-content:space-between;font-size:14px;color:var(--muted)}
+.quote{border-left:4px solid var(--accent2);padding-left:1vw;font-size:1.05em}
+.refs li{font-size:.62em;color:var(--muted)}
+.small{font-size:.75em}
+.nav{position:fixed;right:2vw;bottom:2.5vh;display:flex;gap:8px;z-index:5}
+.nav button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:16px;cursor:pointer}
+svg text{font-family:Inter,sans-serif}
+@media (max-width:800px){.g2,.g3,.g4{grid-template-columns:1fr}.slide{padding:4vh 16px 10vh;overflow:auto}}
+@media print{
+  @page{size:1600px 900px;margin:0}
+  html,body{background:var(--bg);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .deck{height:auto;overflow:visible}
+  .slide{display:flex!important;position:relative;width:1600px;height:900px;page-break-after:always;break-after:page;font-size:26px}
+  .nav{display:none}
+}
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- 1. CARÁTULA -->
+<section class="slide cover">
+  <img src="../argos-logo.png" alt="" onerror="this.style.display='none'">
+  <div class="tag">FaCENA · UNNE — Proyecto Final de Carrera 2026 · Simulación de defensa</div>
+  <h1>Argos: plataforma inteligente de AIOps para la detección, resolución asistida y documentación automática de incidentes en entornos web</h1>
+  <div class="grid g3 small">
+    <div><span class="muted">Estudiante</span><br><b>Juan Agustín Acosta</b> · LU 57851</div>
+    <div><span class="muted">Profesor orientador</span><br><b>Rios, Leopoldo José</b></div>
+    <div><span class="muted">Avance al</span><br><b>Octubre 2026</b></div>
+  </div>
+</section>
+
+<!-- 2. CONTEXTO -->
+<section class="slide">
+  <div class="tag">Introducción · Contexto y problema</div>
+  <h2>Los incidentes en producción se resuelven tarde porque el conocimiento no está documentado</h2>
+  <div class="grid g3">
+    <div class="card"><h3>Fatiga de alertas</h3><p>El monitoreo por umbrales fijos genera volumen, no explicación [2][4].</p></div>
+    <div class="card"><h3>Conocimiento tácito</h3><p>La causa raíz depende de quién esté de guardia: qué falló, por qué y cómo se arregla.</p></div>
+    <div class="card hl"><h3>MTTR alto</h3><p>Tiempos de resolución largos y errores ya resueltos que se repiten.</p></div>
+  </div>
+  <p class="quote">Argos agrega una <b>capa inteligente</b> sobre un stack de observabilidad open-source: detecta, explica, propone una solución y <b>documenta</b>.</p>
+</section>
+
+<!-- 3. OBJETIVOS -->
+<section class="slide">
+  <div class="tag">Introducción · Objetivos</div>
+  <h2>Objetivo general</h2>
+  <p>Diseñar e implementar una plataforma que detecte incidentes a partir de umbrales de alertas, genere mediante <b>LLM + RAG</b> una síntesis con pasos de resolución y <b>documente automáticamente</b> los incidentes no registrados.</p>
+  <div class="grid g3">
+    <div class="card"><h3>OE1 · Observabilidad</h3><p class="small">Arquitectura base (Nginx, API REST, BD) + Prometheus, Loki, Grafana, Alertmanager como IaC, con reglas de detección que disparan el flujo.</p></div>
+    <div class="card"><h3>OE2 · Capa inteligente</h3><p class="small">Base vectorial + RAG + orquestación con LLM que sintetiza, propone resolución y autodocumenta.</p></div>
+    <div class="card"><h3>OE3 · Validación</h3><p class="small">Escenarios k6 (normal, pico, ataque) para evaluar detección, calidad de la propuesta y persistencia.</p></div>
+  </div>
+</section>
+
+<!-- 4. MÉTODOS -->
+<section class="slide">
+  <div class="tag">Métodos · Metodología y decisiones clave</div>
+  <h2>Scrum adaptado: cada sprint entrega la base del siguiente</h2>
+  <div class="flow">
+    <div class="step"><b>S1</b>Infra IaC<br>Terraform + Docker</div><span class="arrow">→</span>
+    <div class="step"><b>S2</b>Observabilidad<br>+ reglas</div><span class="arrow">→</span>
+    <div class="step"><b>S3</b>Base vectorial<br>+ RAG</div><span class="arrow">→</span>
+    <div class="step"><b>S4</b>n8n + LLM</div><span class="arrow">→</span>
+    <div class="step"><b>S5</b>Autodoc<br>+ dashboard</div><span class="arrow">→</span>
+    <div class="step"><b>S6</b>k6 + cloud</div>
+  </div>
+  <table>
+    <tr><th>Decisión</th><th>Justificación</th></tr>
+    <tr><td>Embeddings <b>locales</b> ONNX (MiniLM multilingüe, 384 dims)</td><td>Sin costo por llamada, sin enviar logs a terceros, funciona en español</td></tr>
+    <tr><td>Persistencia <b>Qdrant-only</b></td><td>Incidentes, KB, settings y notificaciones en un solo motor vectorial</td></tr>
+    <tr><td>LLM vía <b>cadena de fallback</b> (Gemini → Groq → OpenRouter)</td><td>Un 503 del proveedor no puede dejar un incidente sin registrar</td></tr>
+    <tr><td>API única en <b>.NET 10</b> por capas; dashboard <b>React + Vite</b></td><td>Mismo stack que la superficie HTTP; SPA liviana servida por Nginx</td></tr>
+  </table>
+</section>
+
+<!-- 5. ARQUITECTURA -->
+<section class="slide">
+  <div class="tag">Métodos · Arquitectura (elaboración propia)</div>
+  <h2>Del log de Nginx al email con la solución</h2>
+  <svg viewBox="0 0 1400 470" width="100%" style="max-height:62vh">
+    <defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#9aa6c8"/></marker></defs>
+    <g font-size="22" fill="#e8ecf8">
+      <!-- superficie -->
+      <rect x="10" y="40" width="260" height="380" rx="14" fill="#121a33" stroke="#2a3566"/>
+      <text x="30" y="75" fill="#22d3a6" font-size="17" font-weight="600">SUPERFICIE HTTP</text>
+      <rect x="30" y="95" width="220" height="70" rx="10" fill="#18224a"/><text x="50" y="138">Nginx (proxy)</text>
+      <rect x="30" y="190" width="220" height="70" rx="10" fill="#18224a"/><text x="50" y="233">API .NET</text>
+      <rect x="30" y="285" width="220" height="70" rx="10" fill="#18224a"/><text x="50" y="328">SQL Server</text>
+      <!-- observabilidad -->
+      <rect x="330" y="40" width="330" height="380" rx="14" fill="#121a33" stroke="#2a3566"/>
+      <text x="350" y="75" fill="#22d3a6" font-size="17" font-weight="600">OBSERVABILIDAD</text>
+      <!-- camino de LOGS (push): Nginx escribe access.log → Alloy lo lee y lo envía → Loki lo guarda -->
+      <text x="350" y="90" fill="#9aa6c8" font-size="13">LOGS · push</text>
+      <rect x="350" y="95" width="135" height="70" rx="10" fill="#18224a"/><text x="368" y="126">Alloy</text>
+      <text x="368" y="151" font-size="13" fill="#9aa6c8">lee y envía logs</text>
+      <rect x="505" y="95" width="135" height="70" rx="10" fill="#18224a"/><text x="523" y="126">Loki</text>
+      <text x="523" y="151" font-size="13" fill="#9aa6c8">guarda · 5 reglas</text>
+      <!-- camino de MÉTRICAS (pull): Prometheus va a buscar /metrics a cada exporter -->
+      <text x="350" y="185" fill="#9aa6c8" font-size="13">MÉTRICAS · pull</text>
+      <rect x="350" y="190" width="135" height="70" rx="10" fill="#18224a"/><text x="368" y="221">Exporters</text>
+      <text x="368" y="246" font-size="13" fill="#9aa6c8">node · cAdvisor · nginx</text>
+      <rect x="505" y="190" width="135" height="70" rx="10" fill="#18224a"/><text x="515" y="221" font-size="21">Prometheus</text>
+      <text x="515" y="246" font-size="13" fill="#9aa6c8">scrapea · 13 reglas</text>
+      <rect x="350" y="285" width="290" height="70" rx="10" fill="#18224a" stroke="#f5b54a"/><text x="370" y="328">Alertmanager</text>
+      <!-- inteligencia -->
+      <rect x="720" y="40" width="400" height="380" rx="14" fill="#121a33" stroke="#5b8cff"/>
+      <text x="740" y="75" fill="#22d3a6" font-size="17" font-weight="600">CAPA INTELIGENTE ARGOS</text>
+      <rect x="740" y="95" width="360" height="70" rx="10" fill="#18224a"/><text x="760" y="138">n8n (orquestación)</text>
+      <rect x="740" y="190" width="360" height="70" rx="10" fill="#18224a"/><text x="760" y="233">Argos API · RAG · LLM</text>
+      <rect x="740" y="285" width="170" height="70" rx="10" fill="#18224a"/><text x="760" y="328">Qdrant</text>
+      <rect x="930" y="285" width="170" height="70" rx="10" fill="#18224a"/><text x="948" y="328">LLMs</text>
+      <!-- salida -->
+      <rect x="1180" y="95" width="210" height="70" rx="10" fill="#18224a" stroke="#22d3a6"/><text x="1200" y="138">Email</text>
+      <rect x="1180" y="190" width="210" height="70" rx="10" fill="#18224a" stroke="#22d3a6"/><text x="1200" y="233">Dashboard</text>
+      <rect x="1180" y="285" width="210" height="70" rx="10" fill="#18224a" stroke="#22d3a6"/><text x="1200" y="320" font-size="19">Grafana</text>
+    </g>
+    <g stroke="#9aa6c8" stroke-width="2.5" fill="none" marker-end="url(#a)">
+      <path d="M250 130 H345"/><path d="M485 130 H500"/>
+      <path d="M640 130 H652 V272 H625 V280"/><path d="M572 260 V280"/>
+      <path d="M505 225 H490"/>
+      <path d="M270 225 H345" stroke-dasharray="6 5"/>
+      <path d="M640 320 H690 V130 H735"/><path d="M920 165 V185"/><path d="M920 260 V280"/>
+      <path d="M1100 130 H1175"/><path d="M1100 225 H1175"/>
+    </g>
+    <text x="280" y="217" font-size="12" fill="#9aa6c8">/metrics</text>
+    <text x="335" y="400" font-size="13" fill="#9aa6c8">Prometheus no pasa por Alloy: los exporters</text>
+    <text x="335" y="416" font-size="13" fill="#9aa6c8">exponen /metrics del host, contenedores y Nginx.</text>
+    <text x="10" y="460" font-size="17" fill="#9aa6c8">Despliegue: docker-compose raíz (3 stacks: monitoring · proxy · apps) en la red argos-net. Terraform sobre LocalStack para la infraestructura.</text>
+  </svg>
+</section>
+
+<!-- 6. HERRAMIENTAS -->
+<section class="slide">
+  <div class="tag">Herramientas TI de apoyo</div>
+  <h2>Herramientas usadas para construir el PFC</h2>
+  <div class="grid g4 small">
+    <div class="card"><h3>Infraestructura</h3><p>Terraform · LocalStack · Docker / Compose</p></div>
+    <div class="card"><h3>Observabilidad</h3><p>Prometheus · Loki · Grafana · Alertmanager · Alloy · cAdvisor · node / nginx-exporter</p></div>
+    <div class="card"><h3>IA</h3><p>Qdrant · ONNX Runtime · Gemini · Groq · OpenRouter · Claude</p></div>
+    <div class="card"><h3>Orquestación</h3><p>n8n (SQLite) · SMTP Gmail</p></div>
+    <div class="card"><h3>Desarrollo</h3><p>.NET 10 · Autofac · React + Vite + TS · SQL Server 2022</p></div>
+    <div class="card"><h3>Pruebas</h3><p>k6 · Playwright (E2E del dashboard) · Postman</p></div>
+    <div class="card"><h3>Gestión</h3><p>Git / GitHub · Product Backlog por sprint · VS Code</p></div>
+    <div class="card"><h3>Asistencia</h3><p>Claude Code como asistente de desarrollo y documentación</p></div>
+  </div>
+</section>
+
+<!-- 7. RESULTADO OE1 -->
+<section class="slide">
+  <div class="tag">Resultados · OE1 Detección</div>
+  <h2>18 reglas de detección vigilan infraestructura y tráfico HTTP</h2>
+  <div class="grid g2">
+    <div>
+      <h3>Loki — logs de Nginx (5) → disparan Argos</h3>
+      <table>
+        <tr><th>Alerta</th><th>Umbral</th><th>for</th></tr>
+        <tr><td>NginxHighErrorRate</td><td>5xx &gt; 5 %</td><td>2m</td></tr>
+        <tr><td class="c">NginxCriticalErrorRate</td><td>5xx &gt; 20 %</td><td>1m</td></tr>
+        <tr><td>NginxHighResponseTime</td><td>p95 upstream &gt; 2 s</td><td>3m</td></tr>
+        <tr><td>NginxSuspiciousIPActivity</td><td>&gt; 200 req/min por IP</td><td>2m</td></tr>
+        <tr><td>NginxErrorLogSpike</td><td>error.log &gt; 1 /s</td><td>2m</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Prometheus — infraestructura (13)</h3>
+      <table>
+        <tr><th>Recurso</th><th>Warning</th><th>Critical</th></tr>
+        <tr><td>CPU host</td><td>&gt; 80 % · 5m</td><td>&gt; 95 % · 2m</td></tr>
+        <tr><td>Memoria host</td><td>&gt; 85 % · 5m</td><td>—</td></tr>
+        <tr><td>Disco host</td><td>&gt; 85 % · 5m</td><td>&gt; 95 % · 2m</td></tr>
+        <tr><td>Contenedor CPU / mem</td><td>&gt; 80 % / 85 %</td><td>—</td></tr>
+        <tr><td>Nginx conexiones</td><td>activas &gt; 800 · espera &gt; 100</td><td>—</td></tr>
+        <tr><td>Nginx req rate</td><td>&gt; 500 req/s</td><td>—</td></tr>
+        <tr><td>Exporters caídos</td><td>—</td><td>up == 0 · 1m</td></tr>
+      </table>
+    </div>
+  </div>
+  <p class="small muted">Alertmanager envía a n8n las 5 alertas de Loki y todo lo <b>critical</b> (repeat 1h); los <b>warning</b> de infraestructura van por email directo.</p>
+</section>
+
+<!-- 8. RESULTADO OE2 flujo -->
+<section class="slide">
+  <div class="tag">Resultados · OE2 Capa inteligente</div>
+  <h2>Cada alerta llega al equipo con diagnóstico y pasos de resolución</h2>
+  <div class="flow">
+    <div class="step"><b>1 · Webhook</b>Alertmanager → n8n</div><span class="arrow">→</span>
+    <div class="step"><b>2 · Prepare</b>pasa si ≥ 3 alertas o 1 critical</div><span class="arrow">→</span>
+    <div class="step"><b>3 · RAG</b>Qdrant · similitud ≥ 0.68</div><span class="arrow">→</span>
+    <div class="step"><b>4 · LLM</b>síntesis + pasos</div><span class="arrow">→</span>
+    <div class="step"><b>5 · ¿Nuevo?</b>sí → autodoc</div><span class="arrow">→</span>
+    <div class="step"><b>6 · Email</b>pool de destinatarios</div>
+  </div>
+  <div class="grid g3">
+    <div class="card"><div class="big">0.68</div><p class="small">umbral de similitud coseno (ajustado desde 0.63 por la evaluación): por encima, el incidente se considera <b>conocido</b> y se reutiliza su solución</p></div>
+    <div class="card"><div class="big">3</div><p class="small">eslabones en la cadena LLM: <code>gemini-flash-lite</code> (principal) → Groq → OpenRouter, con 300 s de cooldown al que falla</p></div>
+    <div class="card"><div class="big">~6 s</div><p class="small">lo que tarda n8n en procesar una alerta con <code>flash-lite</code> (antes 23–68 s con <code>flash-latest</code>)</p></div>
+  </div>
+  <p class="small muted">Validado en producción local: un <code>CAdvisorDown</code> real con timeout de <code>gemini-flash-latest</code> fue respondido por flash-lite (<code>fallback_used=true</code>).</p>
+</section>
+
+<!-- 9. RESULTADO OE2 autodoc + dashboard -->
+<section class="slide">
+  <div class="tag">Resultados · OE2 Autodocumentación y panel</div>
+  <h2>Cada incidente nuevo se convierte en conocimiento reutilizable</h2>
+  <div class="grid g2">
+    <div class="card hl">
+      <h3>Ciclo de vida del incidente</h3>
+      <ul class="small">
+        <li><b>Nuevo</b> (sin match): el LLM redacta la documentación y se guarda como <code>auto_documentado</code>.</li>
+        <li><b>Conocido</b> (match ≥ 0.68): queda <code>pendiente</code> con la solución del runbook, sin gastar LLM.</li>
+        <li><b>Resuelto</b>: la alerta <code>resolved</code> cierra la ocurrencia y calcula el <b>MTTR real</b> (endsAt − startsAt), sin email.</li>
+        <li>Clave natural <code>tipo + startsAt</code>: las repeticiones no duplican.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Dashboard Argos (7 vistas)</h3>
+      <p class="small">Dashboard · Incidentes · Base de Conocimiento · Métricas (golden signals de Nginx) · Pruebas de Carga (k6 on-demand) · Usuarios · Configuración.</p>
+      <p class="small">KPIs: pendientes de documentar, MTTR 7d vs 7d, volumen por día, estado de la IA en el header y notificaciones en la campana.</p>
+      <p class="small muted">Auth JWT con roles; configuración en caliente de LLM, umbral, autodoc, polling y destinatarios.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 10. RESULTADO OE3 k6 -->
+<section class="slide">
+  <div class="tag">Resultados · OE3 Validación con k6</div>
+  <h2>El escenario de ataque dispara toda la cadena; el tráfico normal, ninguna alerta</h2>
+  <table>
+    <tr><th>Escenario</th><th>Carga</th><th>Requests</th><th>p95</th><th>Error</th><th>Resultado</th></tr>
+    <tr><td>Normal</td><td>10 VUs · 5 min</td><td>1 625</td><td>3.23 ms</td><td>0.00 %</td><td><span class="pill ok">0 falsos positivos</span></td></tr>
+    <tr><td>Pico</td><td>100 VUs</td><td>17 998</td><td>2.51 ms</td><td>61 %</td><td><span class="pill wip">rate limit actúa</span></td></tr>
+    <tr><td>Ataque</td><td>5 + 50 VUs</td><td>28 454</td><td>—</td><td>96 %</td><td><span class="pill ok">4 alertas firing</span></td></tr>
+    <tr><td>Flood L7</td><td>20 → 80 req/s</td><td>—</td><td>—</td><td>429 esperado</td><td><span class="pill ok">corta en Nginx</span></td></tr>
+  </table>
+  <div class="grid g4 small">
+    <div class="card"><b class="c">CriticalErrorRate</b>&gt;20 % 5xx</div>
+    <div class="card"><b class="w">HighErrorRate</b>&gt;5 % 5xx</div>
+    <div class="card"><b class="w">ErrorLogSpike</b>&gt;1 err/s</div>
+    <div class="card"><b class="w">SuspiciousIP</b>&gt;200 req/min</div>
+  </div>
+  <p class="small muted">Las 4 llegaron a Alertmanager → n8n (HTTP 200). No se autodocumentaron porque ya tenían runbook en la KB: el comportamiento correcto.</p>
+</section>
+
+<!-- 11. RESULTADO OE3 evaluación -->
+<section class="slide">
+  <div class="tag">Resultados · OE3 Calidad, aprendizaje y tiempos</div>
+  <h2>Argos propone el arreglo correcto en ~1 minuto y aprende de cada incidente</h2>
+  <div class="grid g4">
+    <div class="card hl"><div class="big">1,1 min</div><p class="small">del inicio de la alerta al email con la propuesta (10/10 corridas)</p></div>
+    <div class="card"><div class="big">8/10</div><p class="small">propuestas con el arreglo exacto (<code>docker start …</code>); las otras 2 incluyen el chequeo que revela la causa</p></div>
+    <div class="card"><div class="big">0.40 → 0.99</div><p class="small">score de una alerta nueva contra su propio documento la 2ª vez: se reconoce sin gastar LLM</p></div>
+    <div class="card"><div class="big">6/7</div><p class="small">aciertos del RAG con umbral 0.68 y 0 falsos "conocida" (0.63: 5/7)</p></div>
+  </div>
+  <table>
+    <tr><th>Rúbrica 1–5 (7 escenarios)</th><th>Diagnóstico</th><th>Accionabilidad</th><th>Alucinaciones</th><th>Latencia</th></tr>
+    <tr><td>gemini-flash-lite (principal)</td><td>3,9</td><td>4,1</td><td>0</td><td>~1,5 s</td></tr>
+    <tr><td>nemotron-3-ultra (respaldo)</td><td>4,3</td><td>4,5</td><td>9</td><td>~14 s</td></tr>
+  </table>
+  <p class="small muted">Limitación: no se midió la línea base manual (operador sin Argos); se reporta el tiempo hasta la acción correcta (~1,2 min). Rúbrica puntuada con asistencia de un LLM y revisada por el autor. Detalle: <code>docs/EVALUACION_OE3.md</code>.</p>
+</section>
+
+<!-- 12. CUMPLIMIENTO y cierre -->
+<section class="slide">
+  <div class="tag">Resultados · Cumplimiento</div>
+  <h2>El prototipo cumple ~93 % de los objetivos específicos</h2>
+  <table>
+    <tr><th>Objetivo</th><th>Logrado</th><th>Pendiente</th><th style="width:16%">Avance</th></tr>
+    <tr><td>OE1 Observabilidad + IaC + reglas</td><td>3 stacks, 18 reglas, Terraform/LocalStack, compose unificado</td><td>Migración a nube (GCP/AWS)</td><td><div class="bar"><i style="width:85%"></i></div>85 %</td></tr>
+    <tr><td>OE2 Capa inteligente</td><td>RAG, n8n, LLM con fallback, autodoc, ciclo de vida, dashboard</td><td>—</td><td><div class="bar"><i style="width:100%"></i></div>100 %</td></tr>
+    <tr><td>OE3 Validación</td><td>4 escenarios k6, detección E2E, persistencia y aprendizaje, calidad del LLM y del RAG, 10 corridas de fallas</td><td>Línea base manual de MTTR (declarada como limitación)</td><td><div class="bar"><i style="width:95%"></i></div>95 %</td></tr>
+  </table>
+  <div class="grid g3">
+    <div class="card"><div class="big">6/6</div><p class="small">sprints iniciados; 5 cerrados</p></div>
+    <div class="card"><div class="big">15</div><p class="small">contenedores en la plataforma</p></div>
+    <div class="card"><div class="big">5</div><p class="small">runbooks semilla en la KB</p></div>
+  </div>
+</section>
+
+</div>
+<div class="nav"><button onclick="go(-1)">‹</button><span id="n" style="align-self:center;font-size:14px;color:#9aa6c8"></span><button onclick="go(1)">›</button></div>
+<script>
+const s=[...document.querySelectorAll('.slide')];let i=0;
+function show(){s.forEach((e,k)=>e.classList.toggle('active',k===i));document.getElementById('n').textContent=(i+1)+' / '+s.length;try{history.replaceState(null,'','#'+(i+1))}catch(e){}}
+function go(d){i=Math.max(0,Math.min(s.length-1,i+d));show()}
+document.addEventListener('keydown',e=>{if(['ArrowRight','PageDown',' '].includes(e.key))go(1);if(['ArrowLeft','PageUp'].includes(e.key))go(-1);if(e.key==='Home'){i=0;show()}if(e.key==='End'){i=s.length-1;show()}});
+const h=parseInt(location.hash.slice(1));if(h>0&&h<=s.length)i=h-1;show();
+</script>
+</body>
+</html>

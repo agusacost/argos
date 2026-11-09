@@ -137,10 +137,10 @@ Nginx), ambas **validadas E2E** con el escenario `flood` de k6 corriendo en vivo
 - **Fix sugerido:** quitarlo, o implementarlo: modal (tipo de alerta, resumen, pasos, markdown) →
   `POST /upsert` con `estado=documentado_previamente`, `fuente=manual`.
 
-### F-07 · El umbral de la Base de Conocimiento está fijo en 0.63 — K-02
+### F-07 · El umbral de la Base de Conocimiento está fijo en 0.63 — K-02 · ✅ CORREGIDO (2026-10-26)
 - **Evidencia:** `settings.spec.ts` K-02: se guarda 0.75 en Configuración y el banner sigue mostrando `0.63`.
-- **Dónde:** `KnowledgeBaseView.tsx` (literal `0.63`).
-- **Fix sugerido:** leer `similarity_threshold` con `getSettings()` (todos los roles pueden leerlo).
+- **Fix aplicado:** `KnowledgeBaseView.tsx` lee `similarity_threshold` con `getSettings()`.
+- **Verificado:** `settings.spec.ts` K-02 en verde.
 
 ### F-08 · El Operador podía generar documentación por API aunque la UI se lo ocultara — I-07 · ✅ CORREGIDO (2026-10-21)
 - **Fix aplicado:** `POST /incidents/{id}/document` → `[Authorize(Roles = UserRoles.Admin)]`, igual que el botón en la UI.
@@ -151,9 +151,9 @@ Nginx), ambas **validadas E2E** con el escenario `flood` de k6 corriendo en vivo
 
 ## Baja
 
-### F-09 · El header no tiene título para "Pruebas de Carga" — S-05
+### F-09 · El header no tiene título para "Pruebas de Carga" — S-05 · ✅ CORREGIDO (2026-10-26)
 - **Evidencia:** `auth.spec.ts` S-05: el `<h1>` muestra `Argos`.
-- **Fix:** agregar `loadtests: 'Pruebas de Carga'` al mapa `titles` de `Header.tsx`.
+- **Fix aplicado:** `loadtests: 'Pruebas de Carga'` en el mapa `titles` de `Header.tsx`. Verificado: `auth.spec.ts` en verde.
 
 ### F-10 · Modelo LLM de otro proveedor se guarda sin aviso — C-01
 - **Evidencia:** `settings.spec.ts` C-01 (2.º): con proveedor Gemini, `modelo-sin-prefijo-e2e` → **200** sin

@@ -14,7 +14,7 @@
 |--------|----------|----------|--------|
 | **Sprint 1-2 (Migrado)** | Infraestructura base + stack observabilidad | 4 sem | ✅ Completado (migrado de infra-observability) |
 | **Sprint 3** | Base de conocimiento vectorial + RAG | 2-3 sem | ✅ Completado |
-| **Sprint 4** | Orquestación en n8n + API Claude | 3 sem | ⏳ Pendiente |
+| **Sprint 4** | Orquestación en n8n + API Claude | 3 sem | 🔄 En progreso (config + workflow; falta validación E2E) |
 | **Sprint 5** | Auto-documentación de incidentes | 2 sem | ⏳ Pendiente |
 | **Sprint 6** | Validación con k6 + despliegue cloud | 2 sem | ⏳ Pendiente |
 
@@ -109,7 +109,14 @@
 
 - **Qdrant v1.12.4** (Sprint 3)
   - Puerto: 6333 (REST), 6334 (gRPC)
-  - Colección: `incidentes` (inicializada con `rag/scripts/init_collections.py`)
+  - Colección: `incidentes` (la crea y siembra la Argos API al arrancar)
+
+- **Argos API (.NET 10)** — `argos-api/`, contenedor `argos-rag-api`, puerto 8000 (alias `rag-api` en la red)
+  - Backend del dashboard (vía nginx `/api`) y de n8n: RAG (`/query`, `/upsert`), auth JWT, usuarios,
+    configuración, incidentes, observabilidad, auto-documentación LLM y pruebas de carga k6
+  - Embeddings locales con ONNX Runtime (`paraphrase-multilingual-MiniLM-L12-v2`, 384 dims)
+  - Solución `argos-api/Argos.slnx` en capas (Entities / Repository / Business / Controllers) con Autofac;
+    ver `argos-api/README.md`
 
 ---
 
@@ -150,7 +157,36 @@ curl http://localhost:9090/targets
 curl http://localhost:3000
 curl http://localhost:9093
 curl http://localhost:6333/readyz
+curl http://localhost:8000/health          # RAG API
+curl http://localhost:5678/healthz         # n8n
+
+# Probar el RAG (debería clasificar como documentado, is_documented=true).
+# Requiere el token interno (ARGOS_INTERNAL_TOKEN de docker/monitoring/.env)
+curl -X POST http://localhost:8000/query -H "Content-Type: application/json" `
+  -H "X-Argos-Token: $env:ARGOS_INTERNAL_TOKEN" `
+  -d '{"text":"alta tasa de errores 5xx en nginx"}'
 ```
+
+#### Sprint 4: activar el flujo inteligente (n8n + Claude)
+
+Tras `docker compose up -d --build`, el servicio `n8n` queda en `http://localhost:5678` pero el
+workflow debe importarse y activarse una vez:
+
+```powershell
+# 1. Completar docker/monitoring/.env con ANTHROPIC_API_KEY y N8N_ENCRYPTION_KEY (ver sección Config)
+
+# 2. Importar el workflow versionado (o hacerlo desde la UI: Import from File)
+docker exec argos-n8n n8n import:workflow --input=/workflows/alert-analysis.json
+
+# 3. En la UI (http://localhost:5678): crear la credencial SMTP para el nodo "Notify Email"
+#    y activar el workflow "Argos — Alert Analysis & Resolution".
+
+# 4. Probar el webhook con un payload simulado de Alertmanager (>= ALERT_THRESHOLD alertas)
+curl -X POST http://localhost:5678/webhook/argos-alerts -H "Content-Type: application/json" `
+  -d '{"status":"firing","commonLabels":{"alertname":"NginxHighErrorRate","severity":"warning"},"commonAnnotations":{"summary":"Tasa de errores 5xx > 5%"},"alerts":[{"labels":{"alertname":"NginxHighErrorRate","severity":"warning"}},{"labels":{"alertname":"NginxHighResponseTime","severity":"warning"}},{"labels":{"alertname":"NginxErrorLogSpike","severity":"warning"}}]}'
+```
+
+En *Executions* de n8n verás: RAG consultado → Claude genera síntesis + pasos → email enviado.
 
 ### Despliegue por stack (modo standalone)
 
@@ -204,6 +240,8 @@ Para usar el provisioner Terraform (modo legacy): `terraform apply -var provisio
 | Alertmanager | http://localhost:9093 | — | Enrutamiento alertas |
 | Loki | http://localhost:3100 | — | API logs, sin UI (usar Grafana Explore) |
 | Qdrant | http://localhost:6333 | — | Vector DB; UI en `/dashboard` |
+| RAG API | http://localhost:8000 (solo loopback) | — | `/health`; `/query`, `/upsert` con header `X-Argos-Token` (n8n) |
+| n8n | http://localhost:5678 | (crear en 1er login) | Orquestador; workflow `alert-analysis` (Sprint 4) |
 | API Status | http://localhost/api/status | — | Health check |
 | API Usuarios | http://localhost/api/usuarios | — | Paginación: ?pageNumber=1&pageSize=10 |
 | SQL Server | localhost:1433 | sa / YourStrong@Passw0rd | Conex. externa ADO.NET |
@@ -224,12 +262,23 @@ Para usar el provisioner Terraform (modo legacy): `terraform apply -var provisio
 # REPLACE_WITH_SMTP_USER=your-smtp-user
 # REPLACE_WITH_SMTP_APP_PASSWORD=your-app-password
 
-# n8n (Sprint 4+)
-# N8N_ENCRYPTION_KEY=your-secure-key-here
-# ANTHROPIC_API_KEY=sk-ant-...  # Será necesario en Sprint 4
-# SMTP_FROM=alerts@argos.local
-# ALERT_RECIPIENT_EMAIL=your-email@example.com
+# n8n + Claude (Sprint 4)
+N8N_ENCRYPTION_KEY=<openssl rand -hex 32>
+ANTHROPIC_API_KEY=sk-ant-...            # requerido por el workflow Alert Analysis
+CLAUDE_MODEL=claude-sonnet-4-6          # o claude-opus-4-8
+RAG_API_URL=http://rag-api:8000
+SIMILARITY_THRESHOLD=0.63
+ALERT_THRESHOLD=3                       # alertas activas que disparan el análisis
+ALERT_RECIPIENT_EMAIL=your-email@example.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=observabilidad@example.com
+SMTP_PASSWORD=<app-password>
+SMTP_FROM=observabilidad@example.com
 ```
+
+Copiá `docker/monitoring/.env.example` a `docker/monitoring/.env` y completá los valores reales.
+`.env` está en `.gitignore` — nunca commitees la `ANTHROPIC_API_KEY`.
 
 ### `terraform/environments/localstack/terraform.tfvars` (opcional)
 
@@ -290,8 +339,8 @@ project_root  = "D:/DEV/argos"
 
 ## Roadmap futuro (Sprints 3-6)
 
-- **Sprint 3:** ✅ Base vectorial Qdrant + RAG pipeline (`rag/`)
-- **Sprint 4:** Orquestador n8n + integración API Claude + workflows análisis IA
+- **Sprint 3:** ✅ Base vectorial Qdrant + RAG pipeline + API HTTP del RAG (`argos-api/`, .NET 10)
+- **Sprint 4:** 🔄 Orquestador n8n + integración API Claude + workflow `alert-analysis` (config lista; falta validación E2E)
 - **Sprint 5:** Auto-documentación: generar + persistir docs técnicas
 - **Sprint 6:** k6 load testing (tráfico normal, spike, ataque) + validación MTTR + despliegue AWS/GCP
 
@@ -314,7 +363,7 @@ Migración completa de `D:\DEV\infra-observability` (Sprints 1-4) a `D:\DEV\argo
 - ✅ Grafana dashboards + provisioning
 - ✅ Alloy log collection
 - ✅ API .NET + SQL Server
-- ⏸️ n8n, Ollama, Qdrant — (pendiente Sprint 3-4 con API Claude)
+- ✅ Qdrant + RAG (Sprint 3) · ✅ RAG API HTTP + n8n (SQLite) + Claude API vía workflow (Sprint 4, en validación)
 - ⏸️ k6 scenarios — (pendiente Sprint 6)
 
 ---

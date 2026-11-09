@@ -4,7 +4,8 @@
 **Alumno:** Juan Agustín Acosta (LU 57851)  
 **Profesor Orientador:** Rios, Leopoldo Jose  
 **Fecha de creación:** 2026-08-04  
-**Versión:** 1.0  
+**Última actualización:** 2026-10-07  
+**Versión:** 1.5  
 
 ---
 
@@ -18,20 +19,72 @@ sprint, con estado marcado.
 Se mantiene actualizado conforme avanza la implementación y sirve como base para la toma de
 decisiones, estimaciones y seguimiento de la deuda técnica.
 
+> **Tablero visual (2026-11-09):** el seguimiento día a día de los PBI se movió a un **GitHub Project
+> en formato Scrum** (no Kanban): https://github.com/users/agusacost/projects/2 — un Issue por PBI (50
+> en total: uno por cada sección `###` de este documento + los hitos de Sprint 6 registrados en
+> `CLAUDE.md` que todavía no estaban volcados aquí). Implementa los **3 principios del "Scrum
+> Adaptado" del Anexo II** (`docs/Anexoll_Acosta_Juan_Agustin_V2.docx.md`, sección II):
+> 1. **Entregas incrementales (slicing horizontal):** cada PBI pertenece a un Sprint, agrupado por el
+>    componente técnico que habilita.
+> 2. **Timeboxing:** el campo `Sprint` es un campo **Iteration** real (no una etiqueta/categoría),
+>    con fecha de inicio y duración propia por Sprint — Sprint 1–2 estimados (previos a la migración a
+>    este repo, bundleados en el commit del 2026-08-03), Sprint 3–6 con las fechas reales del changelog
+>    de `CLAUDE.md`. GitHub calcula solo "Sprint 6" como la iteración **activa** (hoy cae dentro de su
+>    rango) y el resto como completadas — refleja, de paso, que el timeboxing planeado (2–3 semanas,
+>    Tabla 1 del Anexo II) no se cumplió en varios Sprints (Sprint 5 duró 42 días, Sprint 6 lleva 60+ y
+>    sigue abierto por el cloud deploy y la memoria), dato honesto para la sección de limitaciones.
+> 3. **Definition of Done verificable:** campo `Status` (Todo/In Progress/Done) por PBI, con el
+>    entregable concreto en el cuerpo de cada issue.
+>
+> Los 6 ítems de **deuda técnica transversal** (seguridad, BD, API .NET, CI/CD, docs) no tienen
+> Sprint asignado a propósito: en Scrum son Product Backlog Items sin "pull" a ningún Sprint todavía,
+> no un sprint propio (el Anexo II no define un "Sprint Transversal").
+>
+> Campo adicional **Category** (Infra/RAG/LLM/Dashboard/etc.) para filtrar por área técnica. Labels
+> `sprint-1`…`sprint-6`/`transversal` en el repo. Este `.md` sigue siendo la referencia narrativa y de
+> detalle técnico (gotchas, validaciones, decisiones); el board es la vista operativa del Sprint
+> actual y del historial de Sprints cerrados.
+
 ---
 
-## Estado actual (Snapshot a 2026-08-04)
+## Estado actual (Snapshot a 2026-10-12)
 
 | Sprint | Objetivo | Entregable esperado | Estado | % |
 |--------|----------|----------------------|--------|-----|
 | **1** | Infraestructura base (Terraform/LocalStack + Docker stacks) | Flujo end-to-end Nginx → Alloy → Loki → Grafana | ✅ Hecho | 100% |
 | **2** | Stack observabilidad + reglas de detección | Tableros + alertas (18 reglas) + Alloy | ✅ Hecho | 100% |
 | **3** | Base de conocimiento vectorial + RAG | Qdrant + pipeline RAG funcional | ✅ Hecho | 100% |
-| **4** | Orquestación n8n + Claude API | Workflows → análisis IA + notificaciones | ⏳ No iniciado | 0% |
-| **5** | Auto-documentación + dashboard Argos | Dashboard propio + docs auto-generadas | ⏳ No iniciado | 0% |
-| **6** | Simulación k6 + validación + cloud | k6 scenarios + cloud deploy (GCP/AWS) | ⏳ No iniciado | 0% |
+| **4** | Orquestación n8n + LLM (Gemini/Claude) | Workflows → análisis IA + notificaciones | ✅ Validado (Fase 1 + cadena real vía k6) | 100% |
+| **5** | Auto-documentación + dashboard Argos | Dashboard propio + docs auto-generadas | ✅ Validado E2E | 100% |
+| **6** | Simulación k6 + validación + cloud | k6 scenarios + cloud deploy (GCP/AWS) | 🔄 En progreso | ~50% |
 
-**Próximo hito:** Iniciar Sprint 4 (n8n + Claude API + webhook Alertmanager).
+**Próximo hito:** cerrar Sprint 6. La **parte k6 está validada E2E** (2026-09-30): 3 escenarios
+(normal/spike/ataque) ejecutados; el escenario de ataque disparó **4 alertas Loki en firing**
+(`NginxCriticalErrorRate`, `NginxErrorLogSpike`, `NginxHighErrorRate`, `NginxSuspiciousIPActivity`)
+→ Alertmanager → webhook n8n (HTTP 200), cerrando también la **Fase 2 del Sprint 4** (cadena real).
+Resultados en `k6/RESULTS.md`. **Restante:** (1) deploy en cloud (GCP/AWS) y (2) memoria académica
+final. Ver Sprint 6 abajo.
+
+**Pool de destinatarios de alertas (2026-10-12):** el email de alertas de n8n dejó de ir a una única
+dirección fija por env (`ALERT_RECIPIENT_EMAIL`): ahora se envía a un **pool de emails configurable
+desde el dashboard** (Configuración, solo Admin), persistido en Qdrant. Implementado y compilado;
+validado E2E vía fallback (falta probar con direcciones en el pool). Ver Sprint 6 → "Pool de destinatarios de alertas".
+
+**Configuración funcional (2026-10-12):** todas las opciones del panel Configuración pasaron a tener efecto real
+(LLM, umbral, auto-doc, polling) y los switches de Integraciones se reemplazaron por estado en vivo.
+Ver Sprint 6 → "Configuración funcional del dashboard".
+
+**Puente Sprint 3→4:** El RAG se expone como API HTTP (Argos API, `argos-api/` en .NET 10, servicio
+`argos-api` con alias `rag-api` en el compose de monitoring) para que n8n pueda consultarlo vía
+`POST http://rag-api:8000/query`.
+
+**Dual LLM provider (nuevo):** El workflow soporta **Gemini y Anthropic** de forma intercambiable. La
+variable `LLM_PROVIDER` (`gemini` | `anthropic`) selecciona el proveedor en runtime mediante el nodo
+**`Route LLM`** (arma URL/headers/body por proveedor) y el nodo **`Parse`** detecta el formato de
+respuesta (`candidates[]` de Gemini / `content[]` de Anthropic). Default: `gemini` /
+`gemini-flash-latest` (alias auto-actualizable: los modelos pineados tipo `gemini-2.x-flash` ya están
+deprecados/retirados para cuentas nuevas). La API key viaja por header/query desde `$env`, sin
+credencial n8n dedicada para el LLM.
 
 ---
 
@@ -240,66 +293,75 @@ similitud definido.
   - Volumen: `qdrant_data` (persistencia)
   - Red: `default` + `argos-net`
 
-- [x] Variables de entorno en `rag/.env.example`:
-  - `QDRANT_URL`, `VOYAGE_API_KEY`, `EMBEDDING_MODEL`, `VECTOR_SIZE`, `SIMILARITY_THRESHOLD`
+- [x] Variables de entorno (`docker/monitoring/.env.example` + `argos-api/Argos.Common/Configuration`):
+  - `QDRANT_URL`, `COLLECTION_NAME`, `VECTOR_SIZE`, `DISTANCE`, `SIMILARITY_THRESHOLD`, `EMBEDDING_MODEL_DIR`
 
 ### Embedding Model
 
-- [x] Modelo seleccionado: **Voyage AI `voyage-3-lite`** (Opción 1 recomendada)
-  - Dimensión: 512
+- [x] Modelo seleccionado: **`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` local (ONNX Runtime)**
+  - Dimensión: 384
   - Métrica: cosine similarity
-  - Requiere: `VOYAGE_API_KEY` en `rag/.env`
+  - 100% local (sin API key); el modelo ONNX cuantizado se descarga en el build de la imagen (con checksum)
 
 ### Colecciones Qdrant
 
-- [x] Colección `incidentes` definida en `rag/argos_rag/qdrant_store.py` (`ensure_collection`)
-  - Vector size: 512, distance: Cosine
+- [x] Colección `incidentes` definida en `IncidentRepository` (`EnsureCollectionAsync`)
+  - Vector size: 384, distance: Cosine
   - Payload: tipo_alerta, resumen, pasos, fecha, estado, fuente
 
-- [x] Script idempotente: `rag/scripts/init_collections.py` (polling readyz + create_collection)
+- [x] Creación idempotente de colecciones al arrancar la API (`StartupInitializer`)
 
 ### Pipeline RAG
 
-- [x] `embed(texto, input_type)` → Voyage AI → `list[float]` (512 dims)
-- [x] `upsert_incident(client, incident)` → embedding + upsert con ID determinístico UUID5
-- [x] `query_incidents(client, query, top_k=3)` → top-k con score + clasificación
-- [x] Umbral de similitud: `SIMILARITY_THRESHOLD=0.75` (configurable en `.env`)
+- [x] `ITextEmbedder.Embed(texto)` → ONNX (MiniLM local) → `float[]` (384 dims)
+- [x] `IIncidentRepository.SaveAsync(incident)` → embedding + upsert con ID determinístico UUID5
+- [x] `IRagService.QueryAsync` (`POST /query`, `top_k=3` por defecto) → top-k con score + clasificación
+- [x] Umbral de similitud: `SIMILARITY_THRESHOLD=0.63` (configurable en `.env`)
 
 ### Carga Inicial de Conocimiento
 
-- [x] 5 docs en `rag/knowledge/` (frontmatter YAML + markdown):
+- [x] 5 docs en `argos-api/Argos.Api/knowledge/` (frontmatter YAML + markdown):
   - `nginx-5xx.md` → `NginxHighErrorRate`
   - `nginx-latency.md` → `NginxHighResponseTime`
   - `suspicious-ip.md` → `NginxSuspiciousIPActivity`
   - `error-log-spike.md` → `NginxErrorLogSpike`
   - `host-resources.md` → `HostHighCPU` (cubre también memoria y disco)
 
-- [x] Script de seed: `rag/scripts/seed.py` (parsea frontmatter → embed → upsert)
+- [x] Seed al arrancar: `SeedService.SeedKnowledgeAsync` (parsea frontmatter → embed → upsert)
 
 ### Validación
 
 - [x] Qdrant accesible en `http://localhost:6333/readyz`
-- [x] Colección `incidentes` creada y poblada con `scripts/init_collections.py` + `scripts/seed.py`
-- [x] `embed()` retorna vector de 512 dimensiones
-- [x] `query_incidents()` retorna resultados con score + clasificación documentado/nuevo
-- [x] Umbral 0.75 validado con `scripts/query_demo.py`
+- [x] Colección `incidentes` creada y poblada al arrancar la API
+- [x] El embedder retorna vectores de 384 dimensiones
+- [x] `POST /query` retorna resultados con score + clasificación documentado/nuevo
+- [x] Umbral 0.63 validado con consultas a `POST /query`
 
 ---
 
-## Sprint 4 — Orquestación n8n + Claude API
+## Sprint 4 — Orquestación n8n + LLM (Gemini/Claude)
 
 **Objetivo:** Implementar el motor de orquestación de Argos que, ante un trigger por umbral,
-ejecute el flujo completo: recuperación de contexto mediante RAG, consulta a Claude API para
-generar síntesis + pasos de resolución, y notificación al equipo por email y Microsoft Teams.
+ejecute el flujo completo: recuperación de contexto mediante RAG, consulta a un LLM (Gemini o Claude)
+para generar síntesis + pasos de resolución, y notificación al equipo por email.
 
 Entregable: flujo end-to-end documentado, probado, con notificaciones operativas.
 
-**Estado:** ⏳ No iniciado | 0%
+**Estado:** ✅ Completo | 100% (Fase 1 validada 2026-08-11; Fase 2 / cadena real cerrada vía k6 2026-09-30)
+
+**Implementado y validado:** servicios `n8n` (SQLite, `argos-n8n`, **up + healthy**) y `rag-api`
+(`argos-rag-api`, up) en el compose de monitoring; receiver `webhook-n8n` + ruta en Alertmanager;
+workflow `docker/monitoring/n8n/workflows/alert-analysis.json` (webhook → umbral → RAG → **Route LLM**
+→ **LLM Call** → Parse → email) **importado, con credencial SMTP adjunta y ACTIVO**; soporte
+**dual-provider** (Gemini/Claude vía `LLM_PROVIDER`); `.env` completo (`N8N_ENCRYPTION_KEY`,
+`LLM_PROVIDER=gemini`, `GEMINI_API_KEY`, `GEMINI_MODEL=gemini-flash-latest`, SMTP Gmail,
+`ALERT_RECIPIENT_EMAIL`). **Validación Fase 1 OK** (2026-08-11): payload simulado → `status=success`,
+email enviado. **Pendiente (opcional):** Fase 2 con alerta real vía Alertmanager.
 
 ### Infraestructura / Docker
 
-- [ ] Agregar servicio `n8n` a `docker/monitoring/docker-compose.yml`
-  - Imagen: `n8nio/n8n:latest` o versión pinneada
+- [x] Agregar servicio `n8n` a `docker/monitoring/docker-compose.yml`
+  - Imagen: `n8nio/n8n:1.70.3` (pinneada), SQLite embebido
   - Puerto: 5678 (UI + API)
   - Variables de entorno:
     - `N8N_ENCRYPTION_KEY` (32+ caracteres aleatorios, en `.env`)
@@ -308,118 +370,103 @@ Entregable: flujo end-to-end documentado, probado, con notificaciones operativas
     - `NODE_ENV=production` (o development)
   - Volumen: `n8n_data` (workflows, credenciales)
   - Red: `argos-net`
-  - Health check: `curl http://n8n:5678/healthz`
+  - Health check: `wget -qO- http://localhost:5678/healthz` (contenedor `argos-n8n` reporta `healthy`)
 
-- [ ] Base de datos n8n (opciones):
-  - **Opción A:** SQLite (included, simple para desarrollo)
-  - **Opción B:** PostgreSQL dedicado (recomendado para producción)
-    - Si usar PostgreSQL: agregar servicio `postgres` a docker-compose
+- [x] Base de datos n8n — **Opción A elegida: SQLite** (`DB_TYPE=sqlite`, embebido, simple para
+  desarrollo). PostgreSQL dedicado queda como opción de producción a futuro.
 
-- [ ] Variables de entorno en `.env.example`:
-  - `N8N_ENCRYPTION_KEY=` (generar con `openssl rand -base64 24`)
-  - `N8N_HOST=localhost`
-  - `N8N_PORT=5678`
-  - `ANTHROPIC_API_KEY=` (CLV de Anthropic)
-  - `QDRANT_URL=http://qdrant:6333`
-  - `WEBHOOK_URL_N8N=http://localhost:5678/webhook/argos-alerts` (para Alertmanager)
+- [x] Variables de entorno en `.env.example` (`docker/monitoring/.env.example`):
+  - `N8N_ENCRYPTION_KEY=` (generar con PowerShell `RandomNumberGenerator.GetBytes(32)` → hex)
+  - `N8N_HOST=localhost`, `N8N_PORT=5678`
+  - `LLM_PROVIDER=gemini` (`gemini` | `anthropic`)
+  - `GEMINI_API_KEY=`, `GEMINI_MODEL=gemini-flash-latest`
+  - `ANTHROPIC_API_KEY=`, `CLAUDE_MODEL=claude-sonnet-4-6`
+  - `RAG_API_URL=http://rag-api:8000`
+  - Webhook Alertmanager → n8n: `http://n8n:5678/webhook/argos-alerts`
 
-### LLM: Claude API Integration
+### LLM: Provider Integration (Gemini | Claude)
 
-- [ ] Configurar `ANTHROPIC_API_KEY` como obligatoria en `.env`
-- [ ] Crear archivo de credenciales n8n:
-  - Nombre: "Claude API"
-  - Tipo: REST API
-  - URL base: `https://api.anthropic.com/v1`
-  - Header: `x-api-key: ${ANTHROPIC_API_KEY}`
-  - Content-Type: application/json
-
-- [ ] Seleccionar modelo Claude:
-  - Recomendación: `claude-opus-4-8` (máxima capacidad) o `claude-sonnet-4-6` (balance velocidad/cost)
-  - Actualizar si sale versión más nueva antes de Sprint 4
-
-- [ ] Definir system prompt (rol de AIOps analyst):
-  ```
-  You are an AIOps analyst. When given alert context and historical incident data,
-  synthesize the problem in clear technical terms and provide step-by-step resolution steps.
-  Be concise, actionable, and reference the historical incidents if applicable.
-  ```
+- [x] Selector de proveedor `LLM_PROVIDER` (`gemini` | `anthropic`) en `.env`; default `gemini`.
+- [x] Nodo `Route LLM` — arma URL/headers/body según el proveedor en runtime (no requiere credencial
+  n8n dedicada: la API key viaja por header `x-api-key` (Anthropic) o query `?key=` (Gemini) desde
+  `$env`).
+- [x] Nodo `LLM Call` (HTTP Request) con retry x3 (`maxTries=3`, backoff `waitBetweenTries=2000`).
+- [x] Nodo `Parse` — extrae el texto detectando el formato de respuesta por proveedor
+  (`candidates[]` Gemini / `content[]` Anthropic).
+- [x] Modelo por defecto: `gemini-flash-latest` (alias, o `gemini-pro-latest`); alternativa Claude
+  `claude-sonnet-4-6` / `claude-opus-4-8`.
+- [x] System prompt (rol de AIOps analyst) definido en el nodo `Build Prompt` (en español, síntesis +
+  pasos accionables numerados, referencia al contexto RAG).
+- [x] `GEMINI_API_KEY` verificada (HTTP 200 a `:generateContent` con `gemini-flash-latest`). Nota: la
+  key `AQ.…` autentica bien; los pins `gemini-2.x-flash` devuelven 404 (retirados) → usar el alias
+  `-latest`.
 
 ### Alertmanager: Webhook Receiver
 
-- [ ] Reintroducir receiver `webhook-n8n` en `alertmanager/alertmanager.yml`:
-  - URL: `http://n8n:5678/webhook/argos-alerts` (ajustar según config n8n)
+- [x] Reintroducir receiver `webhook-n8n` en `alertmanager/alertmanager.yml`:
+  - URL: `http://n8n:5678/webhook/argos-alerts`
   - Method: POST
   - Send resolved: true
   - Headers: `Content-Type: application/json`
 
-- [ ] Agregar ruta que envía al webhook:
-  - Condición: cuando se supera el **umbral configurable** de alertas activas
-  - Lógica: si `(count_of_loki_alerts > threshold)` → webhook
+- [x] Agregar ruta que envía al webhook:
+  - Rutea las 5 alertas Loki de nginx + `severity=critical` a `webhook-n8n`
+  - El conteo de umbral lo evalúa el nodo IF de n8n (`ALERT_THRESHOLD`), no Alertmanager
 
-- [ ] Definir umbral de alertas que dispara el flujo:
-  - Recomendación: 3+ alertas Loki activas simultáneamente
-  - Hacer configurable vía `ALERT_THRESHOLD` en `.env`
+- [x] Definir umbral de alertas que dispara el flujo:
+  - Configurable vía `ALERT_THRESHOLD` en `.env` (default 3); lo evalúa el nodo `Prepare` de n8n
+    (dispara si `alerts.length >= threshold` **o** hay alguna `severity=critical`).
 
 ### Workflow Principal n8n
 
-**Workflow name:** `Alert Analysis & Resolution` (o similar)
+**Workflow name:** `Argos — Alert Analysis & Resolution`
+**Archivo versionado:** `docker/monitoring/n8n/workflows/alert-analysis.json` (importar en n8n UI o
+`docker exec argos-n8n n8n import:workflow --input=/workflows/alert-analysis.json`). Nodos abajo ya
+implementados en el JSON; falta activarlo y validarlo.
 
-- [ ] Node: HTTP Webhook — recibe POST de Alertmanager
-  - Parsea payload: alertname, labels, annotations, status
-  - Extrae datos relevantes (tipo de alerta, timestamp)
+- [x] Node: `Webhook Alertmanager` — recibe POST de Alertmanager (`path=argos-alerts`,
+  `responseMode=onReceived`, 200)
 
-- [ ] Node: Condition — verifica si umbral superado
-  - Si sí → continuar flujo
-  - Si no → detener (no es incidente crítico)
+- [x] Node: `Prepare` (Code) — verifica umbral y normaliza el payload
+  - Dispara si `alerts.length >= ALERT_THRESHOLD` o hay `severity=critical`; si no, retorna `[]` y
+    corta el flujo. Extrae summary, description, alertname, severity, alertsCount, status.
 
-- [ ] Node: RAG Query — consulta Qdrant
-  - Input: resumen de alerta
-  - Output: top-3 incidentes similares de knowledge base
+- [x] Node: `RAG Query` (HTTP) — `POST {RAG_API_URL}/query` con `{text, top_k:3}`
+  - Output: top-3 incidentes similares + `is_documented` (score vs. umbral 0.63)
 
-- [ ] Node: Build Prompt — construye prompt para Claude
-  - Datos de entrada:
-    - Alerta actual (tipo, severity, labels)
-    - Contexto RAG (incidentes similares previos)
-  - Formato: "Alert: [X]. Historical context: [Y]. Propose resolution steps."
+- [x] Node: `Build Prompt` (Code) — combina alerta + contexto RAG
+  - Genera `system` (rol AIOps analyst, español) y `user` (alerta + histórico documentado)
 
-- [ ] Node: Claude API Call
-  - Modelo: `claude-opus-4-8` (o sonnet)
-  - System prompt: (AIOps analyst)
-  - User message: (prompt construido)
-  - Max tokens: 1024
-  - Manejo de errores: retry x3 con backoff exponencial, rate limits
+- [x] Node: `Route LLM` (Code) — selecciona proveedor y arma la request (ver sección LLM arriba)
 
-- [ ] Node: Parse Response
-  - Extrae síntesis del problema
-  - Extrae pasos de resolución (lista)
-  - Valida formato (JSON o regex)
+- [x] Node: `LLM Call` (HTTP) — `gemini-flash-latest` (o Claude); max_tokens 1024; retry x3 con backoff
 
-- [ ] Node: Notification — Email
-  - Destinatario: `${ALERT_RECIPIENT_EMAIL}` (de `.env`)
-  - Asunto: `[ALERTA] ${alert_name} — ${timestamp}`
-  - Body: Síntesis + pasos de resolución (HTML formateado)
-  - SMTP: (reuse config de Alertmanager)
+- [x] Node: `Parse` (Code) — extrae el texto (multi-formato) y arma el HTML del email
 
-- [ ] Node: Notification — Microsoft Teams (opcional en Sprint 4, recomendado)
-  - Webhook Teams del channel `#alerts-argos`
-  - Payload: card con título, descripción, pasos
+- [x] Node: `Notify Email` (emailSend) — credencial SMTP (`SMTP account`, Gmail App Password)
+  adjunta y probada (email enviado en Fase 1)
+  - Destinatario: `${ALERT_RECIPIENT_EMAIL}`; asunto `[ALERTA] {alertname} — {severity}`
+  - Body HTML: síntesis + pasos
 
-- [ ] Node: Error Handling
-  - Fallback si Claude API falla: enviar alerta genérica + logs
-  - Log errors a archivo o servicio externo
+- [ ] Node: Notification — Microsoft Teams — **diferido / opcional** (no implementado en el workflow)
+
+- [~] Node: Error Handling — parcial: retry x3 en `LLM Call`. Falta rama de fallback (alerta genérica
+  si el LLM falla tras los reintentos).
 
 ### Validación End-to-End
 
-- [ ] n8n accesible en `http://localhost:5678`
-- [ ] Workflow creado y deployado
-- [ ] Credencial Claude API configurada y validada
-- [ ] Simular alerta superando umbral:
-  - Generar alerta Loki test (`promtool` o query manual)
-  - Verificar que Alertmanager envía webhook
-  - Verificar que n8n recibe y procesa
-  - Verificar que Claude API es consultada (ver logs n8n)
-  - Verificar que email/Teams notificación es enviada
-  - Verificar que respuesta es coherente y contiene pasos
+- [x] n8n accesible en `http://localhost:5678`
+- [x] Workflow importado en n8n (`n8n import:workflow --input=/workflows/alert-analysis.json`)
+- [x] Acceso al LLM configurado (API key vía `$env`, sin credencial n8n dedicada)
+- [x] Credencial SMTP creada en n8n (`SMTP account`, Gmail 587/STARTTLS) y **adjunta** al nodo
+  `Notify Email` (referenciada en el JSON versionado para que el import la reconecte)
+- [x] Workflow **activo** (webhook productivo `/webhook/argos-alerts` registrado)
+- [x] **Fase 1** (aislar n8n): POST de payload Alertmanager simulado → ejecución `status=success`
+  recorriendo Prepare → RAG Query → Route LLM → LLM Call (Gemini) → Parse → Notify Email; email
+  enviado sin error (2026-08-11)
+- [x] **Fase 2** (cadena completa): validada el 2026-09-30 con el escenario de ataque k6 → 4 alertas
+  Loki en firing → Alertmanager rutea a `webhook-n8n` → n8n responde HTTP 200 y procesa el flujo
+  (RAG → LLM → notificación). Ver `k6/RESULTS.md`.
 
 ---
 
@@ -433,44 +480,51 @@ de Argos con historial de incidentes, métricas y base de conocimiento.
 Entregable: auto-documentación operativa, documentos visibles en dashboard, métricas de MTTR
 calculadas.
 
-**Estado:** ⏳ No iniciado | 0%
+**Estado:** ✅ Validado E2E | 100% (2026-09-23)
+
+> **Decisiones de implementación (2026-08-11):**
+> - **Persistencia = Qdrant como fuente única, vía `rag-api`** (no SQL Server / no Postgres+pgvector).
+>   Los endpoints de incidentes/métricas se implementaron en la **Argos API** (`argos-api/`, servicio
+>   `rag-api`), no en MembresiaAPI. La sección "API .NET: Endpoints nuevos" de abajo se **re-mapea a `rag-api`**
+>   (`GET /incidents`, `GET /incidents/metrics`, `GET /incidents/knowledge-base`,
+>   `GET /incidents/{id}`, `PATCH /incidents/{id}`). El `POST /upsert` ya existía (Sprint 3/4).
+> - **Dashboard = SPA propia React + Vite + TypeScript** (`dashboard/`), servida por nginx (proxy
+>   `/api` → `rag-api`, sin CORS). Servicio `argos-dashboard` (puerto 3001) en el stack monitoring.
+> - Modelo de incidente enriquecido en el payload Qdrant (`documento` markdown, `severity`,
+>   `detected_at`, `resolved_at`, `mttr_minutes`, estados `nuevo`/`auto_documentado`).
 
 ### Auto-Documentación en n8n
 
-- [ ] Agregar condición al workflow principal:
-  - Si `similarity_score < threshold` (ej: < 0.75) → incidente nuevo
-  - Activar rama "auto-documentación"
+- [x] Agregar condición al workflow principal:
+  - Nodo `Is New?` (IF) sobre `is_documented === false` (score RAG < `SIMILARITY_THRESHOLD` 0.63)
+  - Activa la rama "auto-documentación"
 
-- [ ] Nodo Claude: Generar documento técnico
-  - Prompt especial: "Generate a concise technical documentation (title, description, root cause,
-    resolution steps, prevention). Format as markdown."
-  - Input: alerta + contexto (logs, métricas relevantes de Prometheus/Loki)
-  - Output: documento técnico completo
+- [x] Nodo LLM: Generar documento técnico
+  - `Build Doc Prompt` (prompt markdown: título, descripción, causa raíz, pasos, prevención) →
+    `Route Doc LLM` + `Doc LLM Call` (dual provider Gemini/Claude, reusa el ruteo del flujo)
+  - Input: alerta + `prep` (resumen, descripción, severidad, cantidad de alertas)
+  - Output: documento técnico markdown
 
-- [ ] Parsear documento generado
-  - Extrae: título, descripción, causa raíz, pasos, prevención
+- [x] Parsear documento generado (`Parse Doc`)
+  - Arma el payload de incidente con el markdown generado
 
-- [ ] Persistir en Qdrant (knowledge base)
-  - Generar embedding del documento
-  - Insertar en colección `incidentes` con payload enriquecido
-  - Marcar como `fuente: "auto-generado"` y `estado: "documentado_recientemente"`
+- [x] Persistir en Qdrant (knowledge base) vía `POST rag-api/upsert` (`Persist Incident`)
+  - `upsert_incident` genera el embedding e inserta en la colección `incidentes`
+  - Marca `fuente: "auto-generado"`, `estado: "auto_documentado"`, `detected_at`
 
-- [ ] Persistir en store del dashboard (API backend)
-  - Hacer POST a `/api/incidents` (endpoint nuevo, ver abajo)
-  - Incluye: tipo_alerta, resumen, documento_completo, fecha, estado, MTTR estimado
+- [x] Persistir en el store del dashboard = **mismo Qdrant** (fuente única). El `/upsert` cumple
+  ambos roles (KB semántica + historial del dashboard); no hay backend adicional.
 
 ### Persistencia de Incidentes (Backend)
 
-- [ ] Elegir store de persistencia:
-  - **Opción A:** PostgreSQL + pgvector (recomendado si ya se usa Postgres en n8n)
-    - Servicio `postgres` en docker-compose (agregado en Sprint 4 si aplica)
-    - Tabla `incidents`: id, alert_type, summary, full_doc, created_at, status, mttr_minutes
-    - Tabla `incident_vectors`: incident_id, embedding (pgvector)
-  - **Opción B:** Qdrant + API adicional (si solo Qdrant)
-    - Usar Qdrant como fuente única (ya guarda todo)
-    - Implementar endpoint que querya Qdrant
+- [x] Elegir store de persistencia: **Opción B — Qdrant como fuente única** (vía `rag-api`).
+  - Descartadas Postgres+pgvector y SQL Server: Qdrant ya guarda todo; menor superficie y sin
+    depender de un mecanismo de deploy de schema (el `db-init` que citan los docs no existe en el
+    compose real).
+  - Lectura/agregación implementada en `IncidentRepository` + `IncidentService` +
+    `IncidentMetricsCalculator` usando `scroll`/`retrieve`/`set_payload` de Qdrant.
 
-- [ ] Esquema de incidente:
+- [x] Esquema de incidente (payload Qdrant enriquecido):
   ```
   {
     id: UUID,
@@ -486,92 +540,70 @@ calculadas.
   }
   ```
 
-- [ ] Script de init BD (si PostgreSQL):
-  - Crear tablas
-  - Crear índices (alert_type, created_at)
-  - Crear volumen y health check
+- [x] Init del store = `ensure_collection` (Qdrant) ya existente; no hace falta script de BD relacional.
 
-### API .NET: Endpoints nuevos
+### API de incidentes (Argos API, servicio `rag-api`)
 
-**Base path:** `/api/incidents` (o `/api/argos/incidents`)
+**Base path:** `/incidents` en `rag-api` (`IncidentsController`). Antes previsto en MembresiaAPI; se movió
+a la Argos API por la decisión de persistencia Qdrant-only.
 
-- [ ] `POST /api/incidents`
-  - Recibe: incident object (ver schema arriba)
-  - Almacena en DB
-  - Retorna: `201 Created` con incident creado
+- [x] `POST /upsert` (rol de `POST /api/incidents`) — crea/actualiza incidente; `201 Created`.
+  Enriquecido con `documento`, `severity`, `detected_at`, `resolved_at`, `mttr_minutes`.
 
-- [ ] `GET /api/incidents`
-  - Query params: `?pageNumber=1&pageSize=20&status=auto_documented&alertType=NginxHighErrorRate`
-  - Retorna: lista paginada de incidentes + total count
-  - Ordenado por `created_at DESC`
+- [x] `GET /incidents`
+  - Query: `?page=1&size=20&estado=auto_documentado&tipo=NginxHighErrorRate&search=...`
+  - Retorna: `{data, total, page, size}`; ordenado por `detected_at`/`fecha` DESC
 
-- [ ] `GET /api/incidents/{id}`
-  - Retorna: incidente completo con documento
+- [x] `GET /incidents/{id}` — incidente completo con `documento` markdown
 
-- [ ] `PATCH /api/incidents/{id}`
-  - Recibe: campos parciales (ej: `resolved_at`, `status`)
-  - Actualiza en DB
+- [x] `PATCH /incidents/{id}` — campos parciales (`estado`, `resolved_at`, ...); recalcula `mttr_minutes`
 
-- [ ] `GET /api/incidents/metrics`
-  - Retorna: métricas agregadas
-    ```
-    {
-      total_incidents: number,
-      by_status: { documented_previously: N, new: N, auto_documented: N },
-      by_alert_type: { NginxHighErrorRate: N, HostHighCPU: N, ... },
-      mttr_average_minutes: number,
-      incidents_per_day: [{ date, count }, ...],
-      recent_trend: "improving" | "stable" | "degrading"
-    }
-    ```
+- [x] `GET /incidents/metrics` — `total_incidents`, `by_status`, `by_alert_type`,
+  `mttr_average_minutes`, `incidents_per_day`, `recent_trend`
 
-- [ ] `GET /api/incidents/knowledge-base`
-  - Retorna: lista de documentos auto-generados (knowledge base pública)
-  - Query: `?search=error&page=1&pageSize=20`
-  - Retorna: resúmenes (sin documento completo para brevedad)
+- [x] `GET /incidents/knowledge-base` — solo `fuente=auto-generado`; `?search=&page=&size=`
+  (resúmenes, sin el markdown completo)
 
 ### Dashboard de Argos (Frontend)
 
-**Tecnología:** Blazor .NET o React/Next.js (elegir según preferencia)
-**Puerto:** 3001 o integrado en la API (ej: carpeta `/wwwroot` en .NET)
+**Tecnología:** React + Vite + TypeScript (`dashboard/`), servido por nginx (proxy `/api` → `rag-api`).
+**Puerto:** 3001 (servicio `argos-dashboard` en stack monitoring).
 
-- [ ] Página: Historial de incidentes
-  - Tabla: alertname, fecha, resumen, pasos, estado (badge: documentado-previamente /
-    nuevo / auto-documentado)
-  - Filtros: por tipo de alerta, rango de fechas, estado
-  - Búsqueda por palabra clave
-  - Detalles: click en fila → modal con documento completo
+- [x] Página: Historial de incidentes (`/incidents`)
+  - Tabla: tipo_alerta, fecha, resumen, estado (badge), fuente
+  - Filtros: por tipo de alerta y estado; búsqueda por palabra clave
+  - Detalles: click en fila → modal con documento markdown renderizado (`react-markdown`)
 
-- [ ] Página: Métricas agregadas
-  - Card: total de incidentes
-  - Card: MTTR promedio (minutos)
-  - Card: incidentes por tipo (top 5, gráfico de barras)
-  - Gráfico: tendencia temporal (incidentes por día, últimos 30 días)
-  - Indicador: "Trending: ↑ empeorando" o "↓ mejorando"
-  - Breakdown por estado (documentado-previamente / nuevo / auto-documentado)
+- [x] Página: Métricas agregadas (`/metrics`)
+  - Cards: total, MTTR promedio, tendencia, auto-documentados
+  - Barras: incidentes por tipo (top 8, `recharts`); línea: incidentes por día
+  - Indicador de tendencia (↑ empeorando / ↓ mejorando / → estable); breakdown por estado
 
-- [ ] Página: Base de conocimiento
-  - Listado de documentos auto-generados (solo lectura; escritura = auto-doc exclusively)
-  - Búsqueda + filtros por alert type
-  - Click en doc → detalle (markdown renderizado)
+- [x] Página: Base de conocimiento (`/knowledge-base`)
+  - Listado de documentos `fuente=auto-generado` (solo lectura)
+  - Búsqueda; click en doc → detalle markdown
 
-- [ ] Navbar/Menu:
-  - Home (métricas)
-  - Incidents (historial)
-  - Knowledge Base (docs)
-  - Settings (opcional: umbrales, alertas, integraciones)
+- [x] Navbar/Menu: Métricas · Incidentes · Base de conocimiento (Settings: diferido/opcional)
 
 ### Validación
 
-- [ ] Crear incidente de prueba con `POST /api/incidents` y verificar que aparece en historial
-- [ ] Simular alerta "nueva" (score RAG < 0.75):
-  - Verificar que se genera documento en n8n
-  - Verificar que se guarda en DB
-  - Verificar que aparece en dashboard con estado "auto_documented"
-  - Verificar que está disponible en "Knowledge Base"
-- [ ] Consultar `/api/incidents/metrics` y validar cálculos (MTTR, conteos, tendencia)
-- [ ] Dashboard carga y renderiza datos correctamente
-- [ ] Búsqueda en dashboard funciona
+Validada E2E el 2026-09-23 (ver changelog de `CLAUDE.md`). Se sumó **auto-seed** al arrancar
+(`SeedService` + `DemoIncidentCatalog`): 5 runbooks de `knowledge/` + 15 incidentes demo (idempotente, flags
+`ARGOS_AUTO_SEED`/`ARGOS_SEED_DEMO`) para poblar dashboard y KB desde el primer `up`.
+
+- [x] Crear incidente de prueba con `POST /upsert` y verificar que aparece en el historial
+- [x] Simular alerta "nueva" (score RAG < 0.63):
+  - [x] Se genera el documento en n8n (rama `Is New?`)
+  - [x] Se guarda en Qdrant (`estado=auto_documentado`, `fuente=auto-generado`)
+  - [x] Aparece en el dashboard con estado "auto_documentado"
+  - [x] Está disponible en "Base de conocimiento"
+- [x] Consultar `/incidents/metrics` y validar cálculos (MTTR, conteos, tendencia)
+- [x] Dashboard carga y renderiza datos correctamente
+- [x] Búsqueda en dashboard funciona
+
+> **Fix clave (2026-09-23):** `GET /incidents/knowledge-base` filtra por
+> `estados=[documentado_previamente, auto_documentado]` (antes filtraba por `fuente=auto-generado` y
+> la KB quedaba siempre vacía).
 
 ---
 
@@ -584,16 +616,26 @@ de resultados.
 Entregable: evidencia de pruebas, análisis de resultados, infraestructura en cloud, memoria académica
 completa.
 
-**Estado:** ⏳ No iniciado | 0%
+**Estado:** 🔄 En progreso | ~50% (k6 validado E2E 2026-09-30; **pendiente: cloud deploy + memoria académica**)
+
+> **Validación k6 (2026-09-30):** 3 escenarios ejecutados en contenedor `grafana/k6` dentro de
+> `argos-net` (target interno `http://nginx-proxy`, no localhost). Resultados completos en
+> `k6/RESULTS.md`. Resumen: **Normal** p95=3.23ms, 0% err (sin falsos positivos); **Spike** 61% err
+> por rate-limiting Nginx (503) con latencia plana; **Ataque** 28.454 reqs, ~74% 5xx → **4 alertas
+> Loki en firing** → Alertmanager → webhook n8n (HTTP 200). La auto-doc NO disparó (los tipos de
+> alerta ya tienen runbook en la KB → RAG los marca documentados), comportamiento esperado.
+> Gotcha: las alertas Loki no aparecen en Prometheus `/api/v1/alerts`; verlas en el ruler Loki
+> (`:3100/prometheus/api/v1/alerts`) y Alertmanager (`:9093/api/v2/alerts`).
 
 ### k6 Load Testing
 
-- [ ] Crear estructura de directorios:
+- [x] Crear estructura de directorios:
   - `k6/tests/` — scripts de prueba
   - `k6/results/` — outputs JSON (ignorados por `.gitignore`)
   - `k6/data/` — datasets (URLs, payloads)
+  - `k6/docker-compose.yml` (runner `grafana/k6` en `argos-net`), `k6/README.md`, `k6/RESULTS.md`
 
-- [ ] Script 1: Tráfico normal
+- [x] Script 1: Tráfico normal
   - **Archivo:** `k6/tests/normal-traffic.js`
   - Duración: 5 minutos
   - Virtual users: 10 usuarios
@@ -604,7 +646,7 @@ completa.
   - Assertions: response time p95 < 500ms, error rate < 1%
   - Objetivo: verificar que el flujo Argos NO se dispara (falsos positivos)
 
-- [ ] Script 2: Picos de tráfico (spike)
+- [x] Script 2: Picos de tráfico (spike)
   - **Archivo:** `k6/tests/spike-traffic.js`
   - Duración: 5 minutos
   - Fases:
@@ -616,7 +658,7 @@ completa.
   - Assertions: p95 response time < 2000ms (relajado), error rate < 5%
   - Objetivo: pico temporal dispara alertas de latencia / conexiones altas → Argos propone escalado
 
-- [ ] Script 3: Patrón de ataque simulado
+- [x] Script 3: Patrón de ataque simulado
   - **Archivo:** `k6/tests/attack-pattern.js`
   - Duración: 5 minutos
   - Fases:
@@ -632,31 +674,199 @@ completa.
 
 ### Ejecución de Tests
 
-- [ ] Ejecutar scripts con k6:
+- [x] Ejecutar scripts con k6 (runner containerizado, target interno `http://nginx-proxy`):
+  ```powershell
+  docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/normal-traffic.json /tests/normal-traffic.js
+  docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/spike-traffic.json  /tests/spike-traffic.js
+  docker compose -f k6/docker-compose.yml run --rm k6 run --out json=/results/attack-pattern.json /tests/attack-pattern.js
   ```
-  k6 run --out json=k6/results/normal-traffic.json k6/tests/normal-traffic.js
-  k6 run --out json=k6/results/spike-traffic.json k6/tests/spike-traffic.js
-  k6 run --out json=k6/results/attack-pattern.json k6/tests/attack-pattern.js
-  ```
 
-- [ ] Recolectar resultados:
-  - Response times (p50, p95, p99)
-  - Error rates
-  - Throughput (requests/sec)
-  - Duración de cada scenario
+- [x] Recolectar resultados (throughput, p95, error rate por escenario → `k6/RESULTS.md`)
+- [x] Registrar eventos de la cadena de detección (alertas Loki en firing → Alertmanager → webhook n8n HTTP 200)
+- [~] Observar en Grafana durante pruebas (dashboards disponibles; captura para la memoria pendiente)
 
-- [ ] Observar en Grafana durante pruebas:
-  - Dashboard Nginx: conexiones, request rate, status codes, latencia
-  - Dashboard Infrastructure: CPU, memoria, disk (si empieza a escasear)
+### Ejecución k6 on-demand desde la plataforma — ✅ HECHO (2026-10-05)
 
-- [ ] Registrar eventos:
-  - Cuándo se disparan alertas Prometheus/Loki
-  - Cuándo Alertmanager entra en acción
-  - Cuándo n8n webhook recibe (timestamp en logs)
-  - Cuándo Claude API retorna síntesis
-  - Cuándo auto-doc es creada (si aplica)
+Acopla la ejecución de los escenarios k6 al dashboard, para dispararlos **en el momento exacto** que
+se quiera y ver el código + los resultados sin consola.
 
-### Cloud Deployment (AWS o GCP)
+- [x] `rag-api` lanza el contenedor `grafana/k6` como **contenedor hermano** vía Docker socket
+  (`/var/run/docker.sock`) + `Docker.DotNet`. Trigger **solo rol Admin**; una sola corrida
+  activa a la vez (409 si hay otra).
+- [x] Script y resultados compartidos con el sibling vía **volúmenes nombrados** (`argos_k6_scripts`,
+  `argos_k6_results`, con `name:` fijo en compose) — evita gotchas de rutas host en Windows.
+- [x] Corridas persistidas en Qdrant (colección `argos_loadtests`): estado, timestamps, summary, logs.
+- [x] Endpoints en `LoadTestsController`: `GET /loadtests/scenarios` (incluye código fuente),
+  `GET/POST /loadtests/runs`, `GET /loadtests/runs/{id}`, `POST /loadtests/runs/{id}/stop`.
+  Cierre de la corrida en segundo plano + parseo de `k6 --summary-export`. `LoadTestService`,
+  `DockerK6ContainerRunner` y `K6FileWorkspace`.
+- [x] Vista **"Pruebas de Carga"** (`dashboard/src/components/LoadTestsView.tsx`): cards de escenarios,
+  botón Ejecutar (Admin), **visor de código con resaltado** (`react-syntax-highlighter`), resultados
+  por polling (reqs, throughput, p95, error rate, checks) e historial de corridas.
+- [x] Validación E2E (2026-10-05): corrida `normal` → `passed`, summary `reqs=1629, throughput=5.42,
+  p95=3.45ms, error=0%, checks=100%`; contenedor efímero limpiado; 409/401 verificados.
+
+> **Gotchas resueltos:** (1) `grafana/k6` corre como uid 12345 → lanzar el sibling con `user="root"`
+> para que escriba el summary en el volumen (de root), si no `permission denied`. (2) En el JSON de
+> `--summary-export`, las métricas **Rate** (`http_req_failed`, `checks`) guardan la fracción en la
+> clave `value` (no `rate`); Trend usa `p(95)`/`avg`, Counter `count`/`rate` (rate = req/s).
+
+### Observabilidad en el dashboard — ✅ HECHO (2026-10-07)
+
+Acopla a Argos los **golden signals de Nginx** que hoy solo vivían en Grafana, previa evaluación para
+**no duplicar** lo ya existente en Argos (logs por incidente en el drawer, salud de servicios, MTTR).
+Decisión: implementar solo el hueco real (series temporales de Nginx); los logs se dejan a nivel
+incidente (ya cubiertos) y los recursos de host/contenedores quedan como fase 2 opcional.
+
+- [x] Endpoint `GET /observability/nginx-metrics?range=15m|1h|3h|6h` en `ObservabilityController` →
+  `NginxMetricsService`. Reusa el cliente de Loki (`ILokiClient`). Devuelve,
+  alineadas a una grilla temporal común: requests por status code (2xx/3xx/4xx/5xx), latencia upstream
+  P50/P95/P99, request rate total y error rate 5xx (%).
+- [x] Vista **Métricas**: nuevo panel `dashboard/src/components/NginxSignals.tsx` (gráfico de líneas
+  multiserie SVG + selector de rango + mini-stats request rate / error 5xx; polling 20s). Cliente
+  `getNginxMetrics` + tipo `NginxMetrics` en `dashboard/src/api.ts`.
+- [x] **Fix "Salud de Servicios"** (bug): la tarjeta mostraba **todos los servicios como `unknown`**.
+  Causa: `services_health()` consultaba `up{job="nginx"|"api"|"rag-api"|"qdrant"}`, pero Prometheus
+  solo scrapea `nginx-exporter`/`node-exporter`/`cadvisor`/`prometheus` → esos jobs no existen.
+  Solución: `services_health()` ahora hace **probes HTTP directos** sobre `argos-net` (nginx:8081,
+  api:8080, qdrant:6333/readyz, rag-api self); `healthy` si responde `<500`, `degraded` si no. URLs
+  configurables por env (`NGINX_STATUS_URL`, `DOTNET_API_URL`, `QDRANT_READY_URL`, `RAG_SELF_URL`). El
+  sparkline `up` se conserva solo para Nginx (único con job real). La API .NET responde 404 en `/`
+  (sin ruta raíz) → se interpreta como "proceso vivo" (healthy).
+- [x] Validación E2E (2026-10-07): con tráfico generado, el endpoint devuelve request rate ~1 req/s,
+  2xx/4xx poblados, latencia p95 ~2ms y error rate calculado; los 4 servicios reportan `healthy` (probe
+  interno verificado: nginx 200, api 404, qdrant 200, rag-api 200). Funciona vía proxy del dashboard
+  (`:3001/api/...`).
+
+> **Gotcha Loki (`query_range`):** los samples se alinean a múltiplos **absolutos** del `step` (epoch),
+> no al `start` de la consulta. La grilla temporal del backend debe alinearse igual
+> (`start_ts = (int(start)//step)*step`); si arranca en un segundo arbitrario, el match por timestamp
+> falla y **toda la serie sale en 0** aunque Loki tenga datos. Aplica a futuras queries de rango.
+
+### Pool de destinatarios de alertas — 🔄 IMPLEMENTADO (2026-10-12), validación E2E pendiente
+
+**Problema:** el email con el análisis IA (nodo `Notify Email` del workflow n8n) se enviaba a **una sola
+dirección**, `toEmail = $env.ALERT_RECIPIENT_EMAIL`; para cambiarla había que editar `.env` y recrear n8n.
+**Objetivo:** definir un **pool de emails**, configurable desde la app y persistido, al que se le envía
+cada alerta.
+
+**Decisiones:**
+- **Lista simple de emails**: todos reciben todo (sin filtro por severidad ni toggle por destinatario).
+- Se guarda como el campo `alert_recipients: list[str]` del **documento único de configuración**
+  (colección `argos_settings`), siguiendo el patrón Qdrant-only. No se crea una colección nueva y se
+  reutilizan `GET/PATCH /settings`.
+- n8n **consulta el pool en cada alerta** (no se cachea) → un cambio en el dashboard aplica a la próxima
+  alerta, sin reiniciar nada. **Fallback** a `ALERT_RECIPIENT_EMAIL` si el pool está vacío o rag-api no
+  responde, para no perder alertas.
+- **Alcance:** solo el email de n8n (el canal real). El receiver `email-default` de Alertmanager no se toca.
+
+**Implementación:**
+- [x] `AppSettings.AlertRecipients` (default `[]`); `SettingsValidator.NormalizeRecipients()` (strip +
+  lowercase + dedup conservando el orden, regex `^[^@\s]+@[^@\s]+\.[^@\s]+$`, tope 50, 422 con las
+  direcciones inválidas) y `SettingsService.GetAlertRecipientsAsync()`.
+- [x] Argos API:
+  - `SettingsPatchRequest.alert_recipients`: `PATCH /settings` (solo Admin) normaliza la lista; si es
+    inválida → **422** con el detalle. `[]` se guarda (vacía el pool → fallback).
+  - Nuevo **`GET /notifications/recipients`** → `{recipients, count}`, sin JWT (lo consume n8n, igual que
+    `/query` y `/upsert`). Si está definida la env **`ARGOS_INTERNAL_TOKEN`**, exige el header
+    `X-Argos-Token` (si no coincide → 401).
+- [x] Workflow `docker/monitoring/n8n/workflows/alert-analysis.json`: dos nodos nuevos antes de `Notify Email`
+  (las dos ramas, `Is New?`→false y `Persist Incident`, pasan a llegar a `Get Recipients`):
+  - **`Get Recipients`** (HTTP GET a rag-api con `X-Argos-Token`, `retryOnFail` 2×1s,
+    `onError: continueRegularOutput` → un fallo no corta el flujo).
+  - **`Resolve Recipients`** (Code): `to = pool.join(', ')` o, si está vacío, `$env.ALERT_RECIPIENT_EMAIL`;
+    expone `recipients_source` (`pool`|`env`) para diagnóstico. Si no hay ningún destinatario, lanza un
+    error visible en Executions.
+  - `Notify Email.toEmail = {{ $json.to }}` (subject/html siguen leyendo de `$('Parse')`).
+- [x] `docker/monitoring/docker-compose.yml`: `ARGOS_INTERNAL_TOKEN` en `argos-api` y `n8n`;
+  `ALERT_RECIPIENT_EMAIL` queda en n8n como fallback. Documentado en `docker/monitoring/.env.example`.
+- [x] Dashboard: `Settings.alert_recipients` en `dashboard/src/api.ts`; tarjeta **"Notificaciones por email"**
+  en `SettingsView.tsx` (input + Enter/Agregar con validación, chips con ✕, contador N/50, aviso de
+  fallback si está vacía, deshabilitada para no-Admin). Se persiste con el botón "Guardar configuración".
+- [x] Verificado offline: `normalize_recipients` (dedup/lowercase, 422 si inválido, tope 51 → error),
+  `npx tsc --noEmit` y `npm run build` OK, JSON del workflow válido y con las conexiones correctas.
+- [x] Paso 5 validado (2026-10-14): pool = `juanagustinacost@gmail.com`, `juanagustinacosta@hotmail.com`; ejecuciones
+  #30 (simulada), #31 (alerta real disparada por k6 `attack`), #36/#41 (rama auto-doc) → `recipients_source=pool`, SMTP
+  aceptó ambos destinatarios. En el camino: fix de `attack` on-demand (`/data/payloads.json`) y de respuestas Gemini
+  truncadas por thinking tokens (`maxOutputTokens` 4096/6144).
+- [x] Validación E2E (2026-10-12): pasos 1–4 OK. Las ejecuciones n8n #26 y #28 terminaron `success`, con el workflow
+  re-importado y activo, `Get Recipients` 200 y el email aceptado por SMTP vía **fallback** (`recipients_source=env`,
+  porque el pool está vacío). Falta el paso 5 con direcciones reales cargadas en el pool.
+  1. `docker compose up -d --build rag-api dashboard` (project `argos-platform`).
+  2. `PATCH /settings` con duplicados/mayúsculas → se guarda normalizado; inválido → 422; Operador → 403.
+  3. `GET /notifications/recipients` (y 401 si el token no coincide); el pool sobrevive a un
+     `restart rag-api`.
+  4. Re-importar el workflow: `docker exec argos-n8n n8n import:workflow --input=/workflows/alert-analysis.json`
+     → verificar la credencial SMTP → **reactivar**.
+  5. Payload simulado (Fase 1) → en Executions, `recipients_source=pool` y el email llega a todos.
+  6. Pool vacío o `docker stop argos-rag-api` → llega solo a `ALERT_RECIPIENT_EMAIL` (`recipients_source=env`).
+
+> **Posibles fallas / gotchas:**
+> 1. **El workflow en n8n no se actualiza solo**: el JSON del repo es solo la fuente. Hay que re-importarlo,
+>    verificar que la credencial SMTP (`m0MAUGNKirRpuLWP`) siga adjunta y **reactivarlo** (el import lo deja
+>    `active:false`). Si no, n8n sigue enviando a `ALERT_RECIPIENT_EMAIL` como antes.
+> 2. **rag-api caído o Qdrant no listo** → fallback a `ALERT_RECIPIENT_EMAIL`. Si esa env también está
+>    vacía, la ejecución falla con "Sin destinatarios configurados" (se ve en n8n → Executions).
+> 3. **Token desalineado** (`ARGOS_INTERNAL_TOKEN` distinto entre rag-api y n8n) → 401 → **fallback
+>    silencioso** al env. Síntoma: el email llega solo a la dirección por defecto. Se diagnostica con
+>    `recipients_source` en la ejecución.
+> 4. **Límites de Gmail SMTP**: hasta 100 destinatarios por mensaje y ~500 por día. Ante una tormenta de
+>    alertas con un pool grande se agota la cuota diaria (421/550). El tope de 50 solo cubre el primer límite.
+> 5. **Un solo envío con varios To**: los destinatarios ven las direcciones de los demás, y si el servidor
+>    rechaza el mensaje, no le llega a nadie. Una casilla inexistente rebota aparte y no bloquea al resto.
+>    Mejora futura: BCC o un envío por destinatario.
+> 6. **Validación solo sintáctica**: la regex no verifica que el buzón exista; un typo genera rebotes que
+>    Argos no registra.
+> 7. **Exposición**: sin `ARGOS_INTERNAL_TOKEN`, `/api/notifications/recipients` queda accesible vía el proxy
+>    del dashboard (`:3001`). En cloud, el token es **obligatorio**.
+> 8. **Concurrencia**: `update_settings` reescribe el documento entero → si dos Admins guardan a la vez, gana
+>    el último (igual que el resto de la configuración). Además, el dashboard envía todos los settings al
+>    guardar, así que una pestaña vieja puede pisar el pool.
+> 9. **Fuera de alcance**: las alertas que Alertmanager enruta a `email-default`/`email-critical` (warnings
+>    que no son de Nginx) **no** usan el pool y hoy no envían nada (placeholders `REPLACE_WITH_*`).
+
+### Configuración funcional del dashboard — ✅ HECHO (2026-10-12)
+
+**Problema:** el panel Configuración guardaba todo en `argos_settings`, pero nadie leía esos valores, salvo el
+pool de emails. Proveedor/modelo LLM, umbral y auto-doc se tomaban de env; el polling estaba
+hardcodeado (`POLL_MS`) y los switches de Integraciones no tenían efecto.
+
+| Opción | Antes | Ahora (quién lo lee) |
+|---|---|---|
+| Proveedor / Modelo LLM | env `LLM_PROVIDER`/`*_MODEL` | `LlmService.Resolve(settings)` en la Argos API («Generar documentación») y n8n vía `GET /internal/config` (nodos `Route LLM`/`Route Doc LLM`). Al guardar se valida contra el proveedor: key inválida o modelo Gemini inexistente → 422 |
+| Umbral de similitud | env `SIMILARITY_THRESHOLD` | `/query` lee settings → `is_documented` y `clasificacion` (n8n lo recibe sin cambios) |
+| Auto-documentación | ignorado | nodo If `Auto Doc?` en n8n. Con OFF, `Build Pending Incident` persiste el incidente `estado=nuevo` sin doc y el email avisa «pendiente de documentar» |
+| Notificaciones por email | ✅ ya funcionaba | `GET /notifications/recipients` |
+| Integraciones | 4 switches decorativos | **estado en vivo**: `GET /integrations/status` (probes Prometheus `/-/ready`, Loki `/ready`, Alertmanager `/-/ready`, n8n `/healthz`), auto-refresh 30 s |
+| Refresco automático | `POLL_MS=20000` fijo | `App.tsx` lee `polling_interval_seconds` y se aplica al guardar sin recargar |
+| Seguridad | informativo | sin cambios (JWT 12 h, `JwtTokenService`) |
+
+- [x] Backend: `SettingsValidator` (proveedor ∈ {gemini, anthropic}, umbral 0.30–0.95, polling 10–120 → 422),
+  `llm_keys` de solo lectura en `GET /settings`, `ILlmProvider.CheckAsync` (listado de modelos del proveedor, sin costo de
+  tokens), `GET /internal/config` (mismo token opcional `ARGOS_INTERNAL_TOKEN` que el pool), `GET /integrations/status`.
+  La clave obsoleta `integrations` se descarta en `get_settings`.
+- [x] `/query`: un match con `estado=nuevo` y sin documento no cuenta como conocimiento, para que un incidente pendiente
+  no haga pasar por documentadas las alertas siguientes.
+- [x] Workflow n8n: nodos `Get Config` (onError=continue → fallback env), `Auto Doc?`, `Build Pending Incident`;
+  re-importado y activo.
+- [x] Validación E2E: 422 en los cuatro rangos/valores inválidos; umbral 0.90 → `is_documented=false` y 0.63 → `true`;
+  modelo que no corresponde al proveedor → se resuelve al default; auto-doc OFF → incidente `nuevo` + email
+  «pendiente» (exec #26, success); auto-doc ON → `auto_documentado` (exec #28, success); provider=anthropic →
+  n8n llamó a `api.anthropic.com` (exec #27), lo que **reveló que la `ANTHROPIC_API_KEY` del `.env` es inválida (401)**.
+  Ahora el guardado lo bloquea.
+
+> **Posibles fallas / gotchas:**
+> 1. **rag-api caído** → `Get Config` falla y n8n usa env para el LLM y asume auto-doc ON (sin error visible;
+>    se ve en Executions).
+> 2. **Key presente pero inválida**: `llm_keys` solo indica si está cargada. La validez se chequea al *cambiar*
+>    el proveedor o el modelo; si la key se revoca después, el `LLM Call` falla y **esa alerta no envía email**
+>    (comportamiento previo: el email depende de la respuesta del LLM).
+> 3. **Alias de Anthropic**: si el modelo no aparece en `/v1/models` se guarda igual con un *warning* (puede ser un alias).
+> 4. **Cambiar el umbral** reclasifica solo las alertas siguientes; los incidentes guardados no cambian.
+> 5. **Cada cambio al workflow** exige re-importarlo y reactivarlo en n8n (`MSYS_NO_PATHCONV=1` en Git Bash).
+> 6. **Polling**: se aplica en la sesión del Admin que guarda; las demás sesiones lo toman al volver a loguearse o recargar.
+
+### Cloud Deployment (AWS o GCP) — ⏳ PENDIENTE (bloquea el cierre del Sprint 6)
 
 **Elegir entre AWS o GCP; recomendación: GCP por comodidad con Terraform.**
 
@@ -719,9 +929,10 @@ completa.
 
 ### Validación de Detección y Calidad
 
-- [ ] **Detección:** verificar que las 18 alertas (13 Prometheus + 5 Loki) se disparan apropiadamente:
-  - Spike test: HostHighCPU, NginxHighRequestRate, NginxHighActiveConnections
-  - Attack test: NginxHighErrorRate, NginxSuspiciousIPActivity, NginxCriticalErrorRate
+- [x] **Detección:** validada en el escenario de ataque — 4 alertas Loki en firing
+  (`NginxCriticalErrorRate`, `NginxErrorLogSpike`, `NginxHighErrorRate`, `NginxSuspiciousIPActivity`).
+  Nota: el spike se comportó como evento de *error rate* (503 por rate-limiting), no de latencia, y la
+  fase de error (~1 min) no sostuvo el umbral `for: 2m`, por lo que no llegó a firing.
 
 - [ ] **Calidad de síntesis LLM:** (sample de outputs de Claude)
   - ¿Es relevante la síntesis respecto a la alerta?
@@ -819,6 +1030,12 @@ Estos ítems son ortogonales a los Sprints 1-6 y conviene resolver temprano o pa
   - Habilitar: `app.MapOpenApi()` en producción (controlar con env vars)
   - Accesible en `http://localhost:5000/openapi/v1.json` + UI swagger en `/swagger`
 
+- [ ] **Métricas de app en Prometheus (gap de scraping):** Prometheus solo scrapea
+  `nginx-exporter`/`node-exporter`/`cadvisor`/`prometheus`. `api`, `rag-api` y `qdrant` **no exponen
+  `/metrics` ni tienen scrape job**, por eso la salud de esos servicios se resuelve hoy con probes HTTP
+  directos (workaround, 2026-10-07). Para observabilidad real de la app convendría exponer `/metrics`
+  (ver OpenTelemetry abajo) + agregar scrape jobs; recién ahí tendría sentido volver a `up{job}`.
+
 - [ ] **Instrumentación OpenTelemetry:**
   - Agregar paquetes: `OpenTelemetry.Api`, `OpenTelemetry.Exporter.Prometheus`,
     `OpenTelemetry.Instrumentation.AspNetCore`
@@ -886,7 +1103,19 @@ Sprint 6 (k6 + cloud) ← **Valida todos los sprints anteriores**
 ## Próximas Acciones
 
 1. ~~**Inmediato:** Resolver deuda de Sprint 2 — init-db.sql~~ ✅ Resuelto (db-init container)
-2. ~~**Sprint 3:** Desplegar Qdrant, validar conexión, crear colecciones~~ ✅ Completo (`rag/`)
-3. **Sprint 4:** Desplegar n8n, crear workflows, integrar Claude API, webhook Alertmanager
-4. **Sprint 5:** Implementar auto-doc en n8n, endpoints API nuevos, dashboard
-5. **Sprint 6:** Ejecutar k6 tests, desplegar en cloud, redactar memoria
+2. ~~**Sprint 3:** Desplegar Qdrant, validar conexión, crear colecciones~~ ✅ Completo (`argos-api/`)
+3. ~~**Sprint 4a:** Desplegar n8n, importar workflow, integrar LLM (dual Gemini/Claude), webhook
+   Alertmanager~~ ✅ Hecho
+4. ~~**Sprint 4b (cerrar):** SMTP real + credencial + activar workflow + validar e2e Fase 1~~ ✅ Hecho
+5. ~~**Sprint 5a:** auto-doc en n8n (rama `Is New?`), endpoints `rag-api` `/incidents*`, dashboard
+   React~~ ✅ Implementación base hecha (Qdrant-only + SPA React)
+6. ~~**Sprint 5b (validar):** rebuild `rag-api` + reimportar workflow + levantar `argos-dashboard` →
+   e2e: alerta nueva → doc generado → visible en dashboard + KB; validar `/incidents/metrics`~~
+   ✅ Validado E2E (2026-09-23) + auto-seed al arrancar
+7. ~~**Sprint 6a (k6):** 3 escenarios k6 + validar cadena de detección~~ ✅ Validado E2E (2026-09-30)
+7b. ~~**Sprint 6 (k6 on-demand):** ejecutar escenarios desde el dashboard + visualizar código~~
+   ✅ Hecho y validado E2E (2026-10-05) — vista "Pruebas de Carga", `rag-api` + Docker socket
+8. **Sprint 6b (cloud):** crear `terraform/environments/gcp/` (o `aws/`) con provider real, desplegar
+   los 3 stacks en una VM, verificar acceso público y correr k6 contra la instancia cloud
+9. **Sprint 6c (memoria):** redactar la memoria académica final (arquitectura, resultados k6, análisis
+   MTTR, limitaciones, conclusiones) con screenshots, ejemplos de síntesis LLM y logs de k6

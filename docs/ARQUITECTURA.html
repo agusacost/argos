@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Argos — Arquitectura de la Plataforma</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#0d1117; --panel2:#111826; --border:#1e293b;
+    --cyan:#22d3ee; --blue:#3b82f6; --ink:#e2e8f0; --muted:#94a3b8; --dim:#64748b;
+    --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif; line-height:1.6;
+  }
+  .grid-bg{
+    background-image:
+      linear-gradient(rgba(34,211,238,.035) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(34,211,238,.035) 1px,transparent 1px);
+    background-size:34px 34px;
+  }
+  header{
+    position:relative; overflow:hidden; text-align:center;
+    padding:56px 24px 40px; border-bottom:1px solid var(--border);
+  }
+  header .glow{position:absolute;width:520px;height:520px;border-radius:50%;filter:blur(130px);opacity:.14;}
+  header .g1{background:var(--cyan);top:-220px;left:10%}
+  header .g2{background:var(--blue);top:-260px;right:10%}
+  header img{width:108px;height:108px;object-fit:contain;position:relative;z-index:1;
+    filter:drop-shadow(0 8px 24px rgba(34,211,238,.25))}
+  header h1{margin:14px 0 4px;font-size:34px;letter-spacing:-.5px;position:relative;z-index:1}
+  header h1 .accent{background:linear-gradient(90deg,var(--cyan),var(--blue));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  header p{margin:0;color:var(--muted);font-size:15px;position:relative;z-index:1}
+  header .meta{margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;position:relative;z-index:1}
+  .chip{font-size:11.5px;padding:4px 11px;border-radius:999px;border:1px solid var(--border);
+    background:var(--panel2);color:var(--muted)}
+  .chip.ok{color:var(--green);border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}
+  .chip.pend{color:var(--amber);border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.08)}
+
+  main{max-width:1180px;margin:0 auto;padding:40px 24px 80px}
+  section{margin-bottom:52px}
+  h2{font-size:22px;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+  h2 .bar{width:4px;height:22px;border-radius:2px;background:linear-gradient(var(--cyan),var(--blue))}
+  .sub{color:var(--dim);font-size:13.5px;margin:0 0 22px;padding-left:14px}
+
+  .diagram{background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:20px;overflow-x:auto}
+  .mermaid{display:flex;justify-content:center}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 18px 16px;
+    transition:border-color .2s,transform .2s}
+  .card:hover{border-color:rgba(34,211,238,.4);transform:translateY(-2px)}
+  .card h3{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .card .port{font-size:11px;color:var(--cyan);font-family:ui-monospace,Consolas,monospace}
+  .card p{margin:8px 0 0;font-size:12.8px;color:var(--muted)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);
+    border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
+  th{background:var(--panel2);color:var(--cyan);font-weight:600;font-size:12px;
+    text-transform:uppercase;letter-spacing:.5px}
+  tr:last-child td{border-bottom:none}
+  td code{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--cyan);
+    background:rgba(34,211,238,.08);padding:1px 6px;border-radius:5px}
+  .muted{color:var(--dim)}
+
+  .flowlist{display:grid;gap:14px}
+  .flowstep{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--cyan);
+    border-radius:10px;padding:14px 18px}
+  .flowstep h4{margin:0 0 4px;font-size:14px;color:var(--ink)}
+  .flowstep p{margin:0;font-size:13px;color:var(--muted)}
+  .flowstep .seq{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--violet)}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;font-size:12px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:7px}
+
+  footer{text-align:center;color:var(--dim);font-size:12px;padding:30px;border-top:1px solid var(--border)}
+  a{color:var(--cyan);text-decoration:none}
+</style>
+</head>
+<body class="grid-bg">
+
+<header>
+  <div class="glow g1"></div><div class="glow g2"></div>
+  <img src="argos-logo.png" alt="Argos" />
+  <h1>Argos <span class="accent">AIOps</span></h1>
+  <p>Plataforma inteligente de operaciones — detección, diagnóstico asistido por IA y auto-documentación de incidentes</p>
+  <div class="meta">
+    <span class="chip">Juan Agustín Acosta · LU 57851</span>
+    <span class="chip ok">Sprints 1–5 ✓</span>
+    <span class="chip ok">Sprint 6 · k6 ✓</span>
+    <span class="chip pend">Sprint 6 · Cloud ⏳</span>
+    <span class="chip">Actualizado 2026-10-06</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ───────────────────────── OVERVIEW ───────────────────────── -->
+  <section>
+    <h2><span class="bar"></span>Visión general</h2>
+    <p class="sub">Qué resuelve Argos y cómo se compone a alto nivel.</p>
+    <div class="card" style="max-width:none">
+      <p style="font-size:14px;color:var(--ink);margin:0">
+        Argos se monta sobre un stack de <b>observabilidad open-source</b> (Prometheus, Loki, Grafana,
+        Alertmanager) y le suma una capa de <b>inteligencia</b>: cuando una alerta por umbral se dispara,
+        un workflow en <b>n8n</b> consulta una base de conocimiento vectorial (<b>Qdrant + RAG</b>),
+        pide a un <b>LLM</b> (Gemini o Claude) una síntesis del problema con pasos de resolución, envía la
+        notificación enriquecida por email y, si el incidente es nuevo, lo <b>auto-documenta</b> de vuelta en la
+        base. Todo se opera desde un <b>dashboard propio</b> (React+Vite) que habla con una <b>API .NET 10</b>
+        (<code>rag-api</code>), la cual además ejecuta <b>pruebas de carga k6 on-demand</b> y consulta
+        métricas/logs reales. El despliegue es 100% Docker, orquestado por un <code>docker-compose</code> raíz que
+        incluye 3 stacks sobre una red compartida <code>argos-net</code>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── DIAGRAMA DE FLUJO ───────────────────────── -->
+  <section>
+    <h2><span class="bar"></span>Diagrama de flujo de la arquitectura</h2>
+    <p class="sub">Servicios, puertos y recorrido de los datos. Agrupados por stack Docker.</p>
+    <div class="diagram">
+      <pre class="mermaid">
+flowchart TB
+  user([👤 Operador / Navegador]):::actor
+  load([⚡ Tráfico / k6 scenarios]):::actor
+
+  %% ---------- STACK PROXY ----------
+  subgraph PROXY["🔀 Stack proxy"]
+    direction TB
+    nginx["nginx-proxy<br/><small>:80 / :8443</small>"]:::proxy
+    alloy["Alloy<br/><small>:12345 · log collector</small>"]:::proxy
+    nexp["nginx-exporter<br/><small>:9113</small>"]:::exp
+    node["node-exporter<br/><small>:9100</small>"]:::exp
+    cadv["cAdvisor<br/><small>:8080</small>"]:::exp
+  end
+
+  %% ---------- STACK APPS ----------
+  subgraph APPS["🧩 Stack apps"]
+    direction TB
+    api["MembresiaAPI .NET 10<br/><small>:5000 → 8080</small>"]:::app
+    sql[("SQL Server<br/><small>MembresiaDB :1433</small>")]:::db
+  end
+
+  %% ---------- STACK MONITORING: OBSERVABILIDAD ----------
+  subgraph OBS["📊 Observabilidad (stack monitoring)"]
+    direction TB
+    prom["Prometheus<br/><small>:9090 · métricas + reglas</small>"]:::mon
+    loki["Loki<br/><small>:3100 · logs + reglas</small>"]:::mon
+    am["Alertmanager<br/><small>:9093 · routing</small>"]:::mon
+    graf["Grafana<br/><small>:3000 · 3 dashboards</small>"]:::mon
+  end
+
+  %% ---------- CAPA IA / ORQUESTACIÓN ----------
+  subgraph AI["🤖 IA · Orquestación · Datos (stack monitoring)"]
+    direction TB
+    dash["argos-dashboard<br/><small>nginx SPA :3001</small>"]:::ui
+    rag["rag-api · .NET 10<br/><small>:8000 · JWT · /incidents /query /loadtests</small>"]:::core
+    n8n["n8n<br/><small>:5678 · workflow Alert Analysis</small>"]:::flow
+    qdrant[("Qdrant<br/><small>:6333 · incidentes · argos_loadtests</small>")]:::db
+    k6["grafana/k6<br/><small>contenedor on-demand</small>"]:::exp
+  end
+
+  llm{{"LLM externo<br/>Gemini / Claude"}}:::ext
+  mail{{"📧 SMTP · Email"}}:::ext
+
+  %% ---- Tráfico de aplicación ----
+  user -->|HTTPS| dash
+  load -->|HTTP| nginx
+  nginx -->|proxy| api
+  api --> sql
+  nginx -. "logs archivo" .-> alloy
+  alloy -->|push logs| loki
+
+  %% ---- Scraping de métricas ----
+  prom -->|scrape| nexp
+  prom -->|scrape| node
+  prom -->|scrape| cadv
+
+  %% ---- Datasources Grafana ----
+  prom --> graf
+  loki --> graf
+
+  %% ---- Reglas → alertas ----
+  prom -->|reglas firing| am
+  loki -. "reglas LogQL" .-> am
+  am -->|"webhook /argos-alerts<br/>(incidentes)"| n8n
+  am -. "email (resto)" .-> mail
+
+  %% ---- Flujo inteligente n8n ----
+  n8n -->|"RAG /query"| rag
+  n8n -->|"síntesis + pasos"| llm
+  n8n -->|notificación enriquecida| mail
+  n8n -. "si es nuevo: /upsert auto-doc" .-> rag
+
+  %% ---- Dashboard ↔ rag-api ----
+  dash -->|"/api (sin CORS)"| rag
+  rag --> qdrant
+  rag -->|queries reales| prom
+  rag -->|queries reales| loki
+  rag -->|"documentar incidente"| llm
+  rag -->|"Docker socket<br/>lanza sibling"| k6
+  k6 -->|genera carga| nginx
+
+  classDef actor fill:#0b1220,stroke:#334155,color:#e2e8f0,stroke-width:1px;
+  classDef proxy fill:#0e2033,stroke:#38bdf8,color:#bae6fd;
+  classDef exp   fill:#0e1a2b,stroke:#64748b,color:#cbd5e1;
+  classDef app   fill:#15213a,stroke:#818cf8,color:#c7d2fe;
+  classDef db    fill:#0f2027,stroke:#34d399,color:#a7f3d0;
+  classDef mon   fill:#1a1430,stroke:#a78bfa,color:#ddd6fe;
+  classDef ui    fill:#042f36,stroke:#22d3ee,color:#a5f3fc;
+  classDef core  fill:#07303a,stroke:#22d3ee,color:#cffafe,stroke-width:2px;
+  classDef flow  fill:#2a1a10,stroke:#fb923c,color:#fed7aa;
+  classDef ext   fill:#2a1020,stroke:#f472b6,color:#fbcfe8;
+      </pre>
+    </div>
+    <div class="legend">
+      <span>🔀 <b>proxy</b> — borde + telemetría</span>
+      <span>🧩 <b>apps</b> — carga demo (.NET + SQL)</span>
+      <span>📊 <b>observabilidad</b> — métricas/logs/alertas</span>
+      <span>🤖 <b>IA</b> — RAG, LLM, dashboard, k6</span>
+      <span>— línea sólida: flujo directo · ⋯ punteada: condicional/asíncrono</span>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── FLUJOS CLAVE ───────────────────────── -->
+  <section>
+    <h2><span class="bar"></span>Flujos clave (end-to-end)</h2>
+    <p class="sub">Los tres recorridos que definen el valor de la plataforma.</p>
+    <div class="flowlist">
+      <div class="flowstep">
+        <h4><span class="seq">① Detección → Diagnóstico IA → Notificación</span></h4>
+        <p>Tráfico/ataque llega a <b>nginx</b> → Prometheus/Loki evalúan reglas → <b>Alertmanager</b>
+        enruta las alertas de incidente al webhook de <b>n8n</b> → n8n consulta <b>RAG</b> (<code>rag-api /query</code>
+        sobre Qdrant) → arma prompt y pide a <b>Gemini/Claude</b> síntesis + pasos → envía <b>email enriquecido</b>.
+        El resto de alertas salen por email tradicional desde Alertmanager (sin doble notificación).</p>
+      </div>
+      <div class="flowstep">
+        <h4><span class="seq">② Auto-documentación de incidentes nuevos</span></h4>
+        <p>En el mismo workflow, la rama <b>«¿Es nuevo?»</b> detecta incidentes sin match en la base →
+        genera el documento con el LLM → hace <code>POST rag-api /upsert</code> → queda embebido en <b>Qdrant</b>
+        y visible en la vista <b>Base de Conocimiento</b> del dashboard (estados
+        <code>documentado_previamente</code> / <code>auto_documentado</code>).</p>
+      </div>
+      <div class="flowstep">
+        <h4><span class="seq">③ Pruebas de carga k6 on-demand (solo Admin)</span></h4>
+        <p>Desde la vista <b>Pruebas de Carga</b>, <code>rag-api</code> lanza el contenedor <b>grafana/k6</b>
+        como hermano vía <b>Docker socket</b> (volúmenes <code>argos_k6_scripts</code>/<code>argos_k6_results</code>) →
+        k6 golpea a <b>nginx</b> con 3 escenarios (normal/spike/ataque) → el de ataque dispara 4 alertas Loki →
+        reactiva el flujo ① → los resultados se persisten en Qdrant (<code>argos_loadtests</code>).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── SERVICIOS ───────────────────────── -->
+  <section>
+    <h2><span class="bar"></span>Servicios y puertos</h2>
+    <p class="sub">Catálogo de contenedores por stack, con su puerto expuesto y rol.</p>
+    <div class="cards">
+      <div class="card"><h3><span class="dot" style="background:var(--cyan)"></span>argos-dashboard <span class="port">:3001</span></h3><p>SPA React+Vite+TS (7 vistas). nginx sirve estáticos y proxya <code>/api</code> → rag-api.</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--cyan)"></span>rag-api <span class="port">:8000</span></h3><p>.NET 10 (Argos API): JWT, CRUD, /incidents, /query, /observability, /loadtests. Núcleo del backend.</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--amber)"></span>n8n <span class="port">:5678</span></h3><p>Orquestación del workflow Alert Analysis (webhook → RAG → LLM → email → auto-doc).</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--green)"></span>Qdrant <span class="port">:6333</span></h3><p>Vector DB. Colecciones <code>incidentes</code> y <code>argos_loadtests</code>. Embeddings 384-dim.</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--violet)"></span>Prometheus <span class="port">:9090</span></h3><p>Métricas + 13 reglas de alerta. Scrapea exporters y evalúa umbrales.</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--violet)"></span>Loki <span class="port">:3100</span></h3><p>Agregación de logs + 5 reglas LogQL. Recibe push desde Alloy.</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--violet)"></span>Alertmanager <span class="port">:9093</span></h3><p>Routing de alertas: webhook n8n (incidentes) / email (resto).</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--violet)"></span>Grafana <span class="port">:3000</span></h3><p>3 dashboards provisionados. Datasources Prometheus + Loki.</p></div>
+      <div class="card"><h3><span class="dot" style="background:#38bdf8"></span>nginx-proxy <span class="port">:80/:8443</span></h3><p>Reverse proxy + borde de tráfico. Sus logs alimentan a Alloy/Loki.</p></div>
+      <div class="card"><h3><span class="dot" style="background:#38bdf8"></span>Alloy <span class="port">:12345</span></h3><p>Colector de logs (sucesor de Promtail) → push a Loki.</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--dim)"></span>Exporters <span class="port">:9100/9113/8080</span></h3><p>node-exporter, nginx-exporter, cAdvisor — fuentes de métricas.</p></div>
+      <div class="card"><h3><span class="dot" style="background:#818cf8"></span>MembresiaAPI <span class="port">:5000</span></h3><p>API .NET 10 Minimal de demo. Genera tráfico y logs realistas.</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--green)"></span>SQL Server <span class="port">:1433</span></h3><p>MembresiaDB (esquema + SP + seed idempotente vía db-init).</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--dim)"></span>grafana/k6 <span class="port">on-demand</span></h3><p>Contenedor efímero lanzado por rag-api para las pruebas de carga.</p></div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── STACK TECNOLÓGICO ───────────────────────── -->
+  <section>
+    <h2><span class="bar"></span>Stack tecnológico</h2>
+    <p class="sub">Tecnologías por capa.</p>
+    <table>
+      <thead><tr><th>Capa</th><th>Tecnologías</th></tr></thead>
+      <tbody>
+        <tr><td>Frontend</td><td>React · Vite · TypeScript · TailwindCSS · lucide-react</td></tr>
+        <tr><td>Backend / API</td><td>.NET 10 · ASP.NET Core (capas Entities / Repository / Business / Controllers, Autofac) · JWT (auth) · Docker.DotNet (k6 on-demand)</td></tr>
+        <tr><td>IA / RAG</td><td>Embeddings locales ONNX Runtime (<code>paraphrase-multilingual-MiniLM-L12-v2</code>, 384-dim, umbral 0.63) · Qdrant · Gemini / Claude</td></tr>
+        <tr><td>Orquestación</td><td>n8n (SQLite) · workflow Alert Analysis dual-provider</td></tr>
+        <tr><td>Observabilidad</td><td>Prometheus · Loki · Grafana · Alertmanager · Alloy · exporters</td></tr>
+        <tr><td>Aplicación demo</td><td>.NET 10 Minimal API · SQL Server 2022</td></tr>
+        <tr><td>Pruebas de carga</td><td>k6 (3 escenarios: normal / spike / ataque)</td></tr>
+        <tr><td>Infra / Deploy</td><td>Docker Compose (3 stacks + raíz) · red <code>argos-net</code> · Terraform + LocalStack</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ───────────────────────── DESPLIEGUE ───────────────────────── -->
+  <section>
+    <h2><span class="bar"></span>Despliegue</h2>
+    <p class="sub">Un compose raíz incluye los 3 stacks sobre una red externa compartida.</p>
+    <div class="cards">
+      <div class="card"><h3>🌐 argos-net</h3><p>Red bridge externa creada una vez (<code>docker network create argos-net</code>). Todos los stacks la declaran <code>external: true</code> para comunicarse entre sí.</p></div>
+      <div class="card"><h3>📦 docker-compose raíz</h3><p><code>include:</code> de monitoring + apps + proxy. Un solo <code>docker compose up -d --build</code> levanta toda la plataforma.</p></div>
+      <div class="card"><h3>☁️ Sprint 6 (pendiente)</h3><p>Deploy en GCP/AWS adaptando el provider de Terraform + medición final de MTTR, latencia y error rate para la memoria académica.</p></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Argos AIOps · Documento de arquitectura generado el 2026-10-06 · Juan Agustín Acosta —
+  <a href="mailto:aacosta@desarrollosnea.com">aacosta@desarrollosnea.com</a>
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad:true,
+    theme:"base",
+    themeVariables:{
+      background:"#0d1117",
+      primaryColor:"#0e2033",
+      primaryTextColor:"#e2e8f0",
+      primaryBorderColor:"#22d3ee",
+      lineColor:"#64748b",
+      fontSize:"13px",
+      fontFamily:"Segoe UI, system-ui, sans-serif"
+    },
+    flowchart:{curve:"basis",padding:14,nodeSpacing:45,rankSpacing:60,useMaxWidth:true}
+  });
+</script>
+</body>
+</html>
