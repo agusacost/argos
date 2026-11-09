@@ -15,11 +15,10 @@ export default async function globalSetup(): Promise<void> {
   const adminToken = await login(ADMIN.email, ADMIN.password);
   const api = await apiAs(adminToken);
 
-  // 2. Datos semilla
+  // 2. Datos semilla: los 5 runbooks (los incidentes demo son opcionales, ARGOS_SEED_DEMO)
   const kb = (await (await api.get('incidents/knowledge-base?size=1')).json()) as { total: number };
-  const inc = (await (await api.get('incidents?size=1')).json()) as { total: number };
-  if (kb.total < 5 || inc.total < 15) {
-    throw new Error(`Seed incompleto: KB=${kb.total} (esperado ≥5), incidentes=${inc.total} (esperado ≥15)`);
+  if (kb.total < 5) {
+    throw new Error(`Seed incompleto: KB=${kb.total} (esperado ≥5 runbooks)`);
   }
 
   // 3. Snapshot de settings (se restaura en el teardown)

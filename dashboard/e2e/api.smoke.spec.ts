@@ -40,7 +40,7 @@ test.describe('lectura (Admin)', () => {
     const body = await (await admin.get('incidents?page=1&size=10')).json();
     expect(body.data.length).toBeGreaterThan(0);
     expect(body.data.length).toBeLessThanOrEqual(10);
-    expect(body.total).toBeGreaterThanOrEqual(15);
+    expect(body.total).toBeGreaterThanOrEqual(5);
   });
 
   test('D-01 /incidents/metrics', async () => {
@@ -91,15 +91,22 @@ test.describe('lectura (Admin)', () => {
     expect((await admin.get('activity')).status()).toBe(200);
   });
 
+  test('C-06 salud de la cadena LLM: principal primero y estados válidos', async () => {
+    const chain = (await (await admin.get('llm/health')).json()) as { role: string; status: string }[];
+    expect(chain.length).toBeGreaterThan(0);
+    expect(chain[0].role).toBe('primary');
+    for (const h of chain) expect(['up', 'down', 'unknown', 'unconfigured']).toContain(h.status);
+  });
+
   test('C-05 integraciones en vivo: todas up', async () => {
     const its = (await (await admin.get('integrations/status')).json()) as { name: string; status: string }[];
     expect(its.length).toBeGreaterThan(0);
     for (const it of its) expect(it.status, it.name).toBe('up');
   });
 
-  test('L-01 3 escenarios con código', async () => {
+  test('L-01 4 escenarios con código', async () => {
     const sc = (await (await admin.get('loadtests/scenarios')).json()) as { id: string; code: string }[];
-    expect(sc.map((s) => s.id).sort()).toEqual(['attack', 'normal', 'spike']);
+    expect(sc.map((s) => s.id).sort()).toEqual(['attack', 'flood', 'normal', 'spike']);
     for (const s of sc) expect(s.code.length).toBeGreaterThan(50);
   });
 });
@@ -156,6 +163,7 @@ test.describe('seguridad: endpoints sin token', () => {
 test.describe('seguridad: endpoints internos de n8n', () => {
   for (const [method, path] of [
     ['POST', 'query'], ['POST', 'upsert'], ['GET', 'internal/config'], ['GET', 'notifications/recipients'],
+    ['POST', 'internal/llm/generate'],
   ] as const) {
     test(`${method} /${path} no se expone por el proxy del dashboard`, async () => {
       const res = await anon.fetch(path, { method, data: method === 'POST' ? {} : undefined });

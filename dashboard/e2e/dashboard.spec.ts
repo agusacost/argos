@@ -15,9 +15,9 @@ test('D-01 KPIs coinciden con /incidents/metrics', async ({ page }) => {
 
   await openApp(page);
   const mttr = m.mttr_average_minutes != null ? `${Math.round(m.mttr_average_minutes)} min` : '— min';
-  await expect(kpi(page, 'MTTR Actual')).toHaveText(mttr);
+  await expect(kpi(page, 'MTTR promedio')).toHaveText(mttr);
   await expect(kpi(page, 'Auto-Documentados')).toHaveText(String(m.by_status.auto_documentado ?? 0));
-  await expect(kpi(page, 'IA Análisis Activos')).toHaveText(String(nuevos));
+  await expect(kpi(page, 'Pendientes de documentar')).toHaveText(String(nuevos));
   await expect(page.getByText(`${m.total_incidents} total`)).toBeVisible();
 });
 
@@ -32,11 +32,19 @@ test('D-03/D-04 gráfico por día y resumen operacional', async ({ page }) => {
   }
 });
 
-test('D-05 actividad del sistema muestra entradas de auditoría', async ({ page }) => {
+test('D-05 actividad del sistema refleja la auditoría', async ({ page }) => {
+  const api = await apiAs(await login(ADMIN.email, ADMIN.password));
+  const activity = (await (await api.get('activity')).json()) as unknown[];
+  await api.dispose();
+
   await openApp(page);
   const card = page.locator('div.rounded-xl').filter({ hasText: 'Actividad del Sistema' });
-  await expect(card.getByText('Sin actividad registrada aún.')).toHaveCount(0);
-  await expect(card.locator('div.space-y-2\\.5 > div').first()).toBeVisible();
+  if (activity.length === 0) {
+    await expect(card.getByText('Sin actividad registrada aún.')).toBeVisible();
+  } else {
+    await expect(card.getByText('Sin actividad registrada aún.')).toHaveCount(0);
+    await expect(card.locator('div.space-y-2\\.5 > div').first()).toBeVisible();
+  }
 });
 
 test('D-06 incidentes recientes: hasta 8 filas y abre el detalle', async ({ page }) => {
@@ -59,7 +67,7 @@ test('S-06 campana: marcar una notificación como leída persiste', async ({ pag
 
   await bell.click();
   await expect(page.getByText('Notificaciones', { exact: true })).toBeVisible();
-  const markRead = page.locator('header div.max-h-80 button').first();
+  const markRead = page.locator('header button[aria-label="Marcar como leída"]').first();
   const done = page.waitForResponse((r) => r.url().includes('/read') && r.request().method() === 'POST');
   await markRead.click();
   expect((await done).status()).toBe(200);
