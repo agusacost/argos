@@ -1,0 +1,38 @@
+Actividad: Avance del PFC (formato EJEMPLO de presentación de apoyo a la defensa)
+
+Descripción y propósito
+Cada equipo/estudiante expone el avance de su Proyecto Final de Carrera (PFC) simulando el momento de la defensa oral. A tal fin organiza el contenido según la estructura definida en el Anexo III del Reglamento -que representa la estructura/estándar internacional IMRD de difusión en ámbitos académicos -científicos (Introducción, Métodos, Resultados y Discusión)-. 
+Objetivos de la actividad:
+* Evidenciar del estado de avance  del PFC al mes de octubre de 2026
+* Fortalecer competencias de comunicación escrita y oral
+* Simular la defensa final del PFC ante tribunal.
+
+Objetivos de aprendizaje:
+Al finalizar la actividad, cada estudiante será capaz de:
+* Sintetizar el problema, los objetivos y el marco de su PFC en una introducción clara y acotada.
+* Justificar las decisiones metodológicas tomadas hasta el momento.
+* Presentar resultados parciales con evidencia (datos, prototipos, representaciones o esquemas gráficos, mediciones, otros).
+* Presentar críticamente lo logrado, las limitaciones y los ajustes necesarios.
+* Comunicar en un tiempo acotado los avances, diseñar y utilizar un apoyo visual coherente y profesional.
+* Responder ante las preguntas fundamentando las decisiones tomadas.
+
+Modalidad de exposición: cada equipo o estudiante
+Tiempo: 5 a 8 minutos
+
+
+Plantilla de presentación tipo defensa aplicar secciones del Anexo III del Reglamento
+Ejemplo de plantilla de presentación. Recodar presentar una idea central por diapositiva, dedicar  la mayor parte del tiempo a la sección Resultados.
+Sección Contenido sugerido de la diapositivaCaratula Datos institucionales, Título del PFC, estudiante/s, profesores orientadores, año presentación. IntroducciónContexto y problema: qué situación se aborda, su relevanciaIntroducciónAntecedentes y estado del arte: aporte del proyecto ante un “nicho” o “vacío”IntroducciónObjetivo general y objetivos específicosMétodosAdaptación de una metodología,  selección de tecnologías, datos y procedimientos empleados; justificación de las decisiones claveHerramientasHerramientas TI para apoyar el proceso de construcción del PFCResultadosIndicar resultados asociados a los objetivos ResultadosIndicar resultados asociados a los objetivos ResultadosCumplimiento: tabla de objetivos específicos con porcentaje o estado de avanceConclusionesAporte del PFCConclusiones Análisis: qué significan los resultados frente a los objetivos y al estado del arteConclusionesDificultades, limitaciones, riesgos y ajustes necesariosCierreFuturos trabajos, actividadesCierreReferencias bibliográficas
+Criterios de diseño de las diapositivas
+* Escribir afirmativamente, (por ejemplo, "El prototipo cumple el 80 % delobjetivo 2")
+* Priorizar figuras, tablas y esquemas de elaboración propia.
+* Tipografía legible a distancia (mínimo 20 pt) y buen contraste.
+* Citar las adaptaciones, figuras, tablas o datos de otras fuentes
+Entregable
+* En el foro habilitado para la actividad, deberá incluir la presentación en PDF y en formato editable, identificar como: Apellido_PFC_simula-defensa.
+* Seleccionar la fecha de exposición, en las opciones disponibles del foro.
+
+FaCENA – UNNE
+Proyecto Final de Carrera		2026
+
+
