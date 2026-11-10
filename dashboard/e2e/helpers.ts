@@ -63,13 +63,30 @@ export const VIEWS = {
   settings: 'Configuración',
 } as const;
 
+/** Ruta de Next.js de cada vista (espejo de src/routes.ts). */
+export const ROUTES: Record<keyof typeof VIEWS, string> = {
+  dashboard: '/',
+  incidents: '/incidentes',
+  knowledge: '/conocimiento',
+  metrics: '/metricas',
+  loadtests: '/pruebas-carga',
+  users: '/usuarios',
+  settings: '/configuracion',
+};
+
 export function sidebar(page: Page) {
   return page.locator('aside nav');
 }
 
-/** Las vistas no tienen URL: se navega con el sidebar. */
+/** Ítem del sidebar de una vista (un <Link> de Next.js). */
+export function navLink(page: Page, view: keyof typeof VIEWS) {
+  return sidebar(page).getByRole('link', { name: VIEWS[view] });
+}
+
+/** Navega con el sidebar y espera la URL de la vista. */
 export async function goToView(page: Page, view: keyof typeof VIEWS): Promise<void> {
-  await sidebar(page).getByRole('button', { name: VIEWS[view] }).click();
+  await navLink(page, view).click();
+  await expect(page).toHaveURL(new RegExp(`${ROUTES[view] === '/' ? '/' : ROUTES[view]}$`));
 }
 
 /** Abre la app ya logueada (storageState) y espera el layout. */

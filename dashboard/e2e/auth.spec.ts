@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
   ADMIN, ADMIN_STORAGE, OPERADOR_STORAGE, VIEWS,
-  collectPageErrors, goToView, openApp, readRunState, sidebar,
+  collectPageErrors, goToView, navLink, openApp, readRunState, sidebar,
 } from './helpers';
 
 test.describe('sin sesión', () => {
@@ -11,8 +11,8 @@ test.describe('sin sesión', () => {
     await page.getByPlaceholder('••••••••').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Iniciar Sesión' }).click();
     await expect(sidebar(page)).toBeVisible();
-    for (const label of Object.values(VIEWS)) {
-      await expect(sidebar(page).getByRole('button', { name: label })).toBeVisible();
+    for (const view of Object.keys(VIEWS) as (keyof typeof VIEWS)[]) {
+      await expect(navLink(page, view)).toBeVisible();
     }
     expect(await page.evaluate(() => localStorage.getItem('argos_token'))).toBeTruthy();
   });
@@ -98,8 +98,8 @@ test.describe('Operador', () => {
 
   test('S-04 el Operador no ve Gestión de Usuarios', async ({ page }) => {
     await openApp(page);
-    await expect(sidebar(page).getByRole('button', { name: VIEWS.users })).toHaveCount(0);
+    await expect(navLink(page, 'users')).toHaveCount(0);
     await expect(sidebar(page).getByText(readRunState().operador.email.split('@')[0])).toHaveCount(0);
-    await expect(sidebar(page).getByRole('button', { name: VIEWS.settings })).toBeVisible();
+    await expect(navLink(page, 'settings')).toBeVisible();
   });
 });

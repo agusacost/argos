@@ -2,6 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { ADMIN, ADMIN_STORAGE, OPERADOR_STORAGE, apiAs, goToView, login, openApp } from './helpers';
 
 const scenarioCards = (page: Page) => page.locator('main div.cursor-pointer.rounded-xl');
+// normal, spike, attack y flood (el escenario flood se sumó después de escribir esta suite).
+const SCENARIOS = 4;
 const runButton = (page: Page) => page.getByRole('button', { name: /Ejecutar escenario|Ejecutando|Iniciando/ });
 
 test.describe('Admin', () => {
@@ -10,19 +12,19 @@ test.describe('Admin', () => {
   test.beforeEach(async ({ page }) => {
     await openApp(page);
     await goToView(page, 'loadtests');
-    await expect(scenarioCards(page)).toHaveCount(3);
+    await expect(scenarioCards(page)).toHaveCount(SCENARIOS);
   });
 
   test('L-01/L-02 cada escenario muestra su código', async ({ page }) => {
     const header = page.locator('main div.border-b').filter({ has: page.locator('svg.lucide-file-code2') });
     const seen = new Set<string>();
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < SCENARIOS; i++) {
       await scenarioCards(page).nth(i).click();
       const file = (await header.innerText()).trim();
       seen.add(file);
       await expect(page.locator('main pre code')).toContainText('export const options');
     }
-    expect(seen.size).toBe(3);
+    expect(seen.size).toBe(SCENARIOS);
   });
 
   test('L-03/L-04/L-05 @k6 ejecutar "normal", 409 concurrente y detener', async ({ page }) => {
@@ -63,7 +65,7 @@ test.describe('Operador', () => {
   test('L-03 el Operador ve el código pero no puede ejecutar', async ({ page }) => {
     await openApp(page);
     await goToView(page, 'loadtests');
-    await expect(scenarioCards(page)).toHaveCount(3);
+    await expect(scenarioCards(page)).toHaveCount(SCENARIOS);
     await expect(runButton(page)).toBeDisabled();
     await expect(page.getByText('Solo los administradores pueden disparar pruebas.')).toBeVisible();
   });
