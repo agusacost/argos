@@ -24,7 +24,7 @@ Argos es una plataforma AIOps construida sobre un stack de observabilidad open-s
   - Argos API completa: auth JWT, CRUD usuarios, settings, `/incidents*`, `/observability/services`,
     `/notifications`, `/activity`, `/incidents/{id}/document` (LLM), `/incidents/{id}/observability`
     (queries reales a Loki/Prometheus), auditoría — **sin stubs**.
-  - **Dashboard propio** React+Vite (`dashboard/`, 7 vistas: Dashboard/Incidentes/Base de Conocimiento/
+  - **Dashboard propio** Next.js (`dashboard/`, 7 vistas: Dashboard/Incidentes/Base de Conocimiento/
     Métricas/Pruebas de Carga/Usuarios/Configuración), servicio `argos-dashboard` puerto 3001, nginx proxya `/api`→`rag-api`.
   - **Auto-seed al arrancar** (`SeedService` + `DemoIncidentCatalog`): 5 runbooks de knowledge/ + 15 incidentes demo
     con estados/severidades/MTTR/docs variados. Idempotente. Flags: `ARGOS_AUTO_SEED`, `ARGOS_SEED_DEMO`.
@@ -126,6 +126,15 @@ Argos es una plataforma AIOps construida sobre un stack de observabilidad open-s
   - Prompts con el documento aprendido + contexto del stack (accionabilidad 2,5 → 4,5 en alertas aprendidas).
     10 corridas automáticas (`eval/run-auto.mjs`): propuesta en ~1,1 min, arreglo exacto 8/10. **Línea base manual de
     MTTR no medida: limitación declarada** (decisión del autor). Presentación/SPEECH: OE3 95 %, total ~93 %.
+- ✅ **Dashboard migrado a Next.js** (2026-11-10): la propuesta (Anexo II) pedía Next.js y estaba en Vite.
+  Next.js 16 App Router con `output: 'export'` (el mismo nginx sirve `out/`; proxy `/api` y bloqueo de
+  endpoints internos sin cambios), React 19, **una ruta por vista** (`/incidentes`, `/metricas`, `/conocimiento`,
+  `/pruebas-carga`, `/usuarios`, `/configuracion`; mapa en `dashboard/src/routes.ts`). Estado global en
+  `src/app-shell/AppProvider.tsx` (la vista activa sale de la URL). E2E: `e2e/routing.spec.ts` + suite adaptada
+  → 80 pasan, 4 fallan (I-04, I-07, K-06, C-01: fallan igual con Vite, son pendientes previos).
+  - **Gotchas:** `package-lock.json` está en `.gitignore` → el Dockerfile usa `npm install` (no `npm ci`);
+    `next dev` usa rewrites (`DEV_API_TARGET`), el build no (export estático); `next dev` genera un
+    `AGENTS.md` en `dashboard/` (ignorado en git).
 - ⏳ Sprint 6 pendiente: deploy en cloud (GCP/AWS) + memoria académica final
 
 ---
@@ -166,9 +175,9 @@ D:\DEV\argos/
 │   ├── Argos.Repository/ (repositorios Qdrant, Embeddings ONNX, Loki/Prometheus, LLM providers, k6/Docker)
 │   ├── Argos.Entities/ (entidades de dominio + Dtos/)   Argos.Common/ (config por entorno, excepciones)
 │   └── Dockerfile + README.md
-├── dashboard/                                — Sprint 5: SPA propia (React+Vite+TS)
-│   ├── src/ (components: Metrics/Incidents/KnowledgeBase/LoadTests/Users/Settings, api, ui)
-│   ├── Dockerfile (node build → nginx) + nginx.conf (proxy /api → rag-api)
+├── dashboard/                                — Sprint 5: panel propio (Next.js App Router + TS, export estático)
+│   ├── src/ (app/: una ruta por vista · app-shell/: estado + layout · components/ · routes.ts · api.ts)
+│   ├── Dockerfile (next build → out/ → nginx) + nginx.conf (proxy /api → rag-api)
 │   └── package.json
 ├── k6/                                       — Tests de carga (Sprint 6): scripts + runner + RESULTS.md
 ├── .gitignore
@@ -324,7 +333,7 @@ docker inspect network argos-net           # Ver contenedores en red
 
 ### Sprint 5: Auto-documentación + Dashboard — ✅ validado E2E (2026-09-23)
 
-**Decisiones:** persistencia **Qdrant-only** vía `rag-api` (no SQL/Postgres); dashboard **SPA React+Vite**.
+**Decisiones:** persistencia **Qdrant-only** vía `rag-api` (no SQL/Postgres); dashboard **SPA React+Vite** (migrado a Next.js el 2026-11-10).
 
 - ✅ Argos API (`rag-api`) completa: auth JWT, CRUD usuarios, settings, CORS, `/incidents*` (list/get/patch/metrics/
   KB/document/observability/audit), `/observability/services`, `/notifications`, `/activity` — sin stubs.
@@ -433,3 +442,4 @@ terraform state rm resource-name   # Remover recurso de state
 | 2026-10-12 | Claude Code | **Configuración funcional** (validado E2E): LLM/umbral/auto-doc/polling del panel Configuración ahora tienen efecto (`resolve_llm`, `check_llm`, `validate_settings_patch`, `GET /internal/config`, `/query` con umbral de settings); Integraciones → estado en vivo (`GET /integrations/status`); workflow n8n con `Get Config` + `Auto Doc?` + `Build Pending Incident`. Detectada `ANTHROPIC_API_KEY` inválida. |
 | 2026-10-19 | Claude Code | **Argos API en .NET 10** (`argos-api/Argos.slnx`): capas `Argos.Entities` (entidades + DTOs), `Argos.Repository` (repositorios Qdrant con `QdrantRepository<T>`, embeddings ONNX, Loki/Prometheus, `ILlmProvider` Gemini/Anthropic, k6 vía Docker.DotNet), `Argos.Business` (servicios con interfaz), `Argos.Api` (controllers MVC + auth JWT + binder de DTOs) y `Argos.Common`; DI con módulos Autofac. Pasa a ser la **única API**: se eliminó la implementación Python (`rag/`, servicio `rag-api-python`, volumen `fastembed_cache`). Validado: endpoints vía `:3001/api`, n8n, LLM doc, k6 start/409/stop. |
 | 2026-10-26 | Claude Code | **LLM con fallback + salud + notificaciones**: un `CAdvisorDown` real murió en n8n por 503/timeout de `gemini-flash-latest` sin dejar incidente ni aviso. Ahora n8n llama a `POST /internal/llm/generate` (cadena principal → `LLM_FALLBACK_CHAIN`), proveedores `GroqProvider`/`OpenRouterProvider` (`OpenAiCompatibleProvider`), `LlmHealthTracker` pasivo con cooldown, `GET /llm/health` + `POST /llm/health/check`, notificaciones con `kind` (`incident`/`llm_health`/`pipeline_error`) + `read-all`; header con badge de IA real y campana con navegación al incidente; tarjeta "Estado de los modelos IA" en Configuración. Workflow: sin `Route LLM`/`Route Doc LLM`, nodos LLM con `onError=continue`, el incidente se persiste aunque falle la IA. n8n ya no recibe keys de LLM. Validado: flash-latest timeout → flash-lite responde (`fallback_used=true`). |
+| 2026-11-10 | Claude Code | **Dashboard migrado de Vite a Next.js** (lo pedía la propuesta, Anexo II): Next.js 16 App Router + React 19, export estático servido por el mismo nginx, una ruta por vista (`src/app/`, `src/routes.ts`), estado en `src/app-shell/AppProvider.tsx`, Sidebar con `<Link>`, 404 propio, `/usuarios` solo Admin. E2E `routing.spec.ts` (deep links, F5, historial, login con deep link, `?estado=`, 404) + suite adaptada (k6: 4 escenarios). Resultado 80 ✓ / 4 ✗ (las 4 fallan igual con Vite). Docs, presentación e Informe Final actualizados. |

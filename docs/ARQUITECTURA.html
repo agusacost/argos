@@ -114,7 +114,7 @@
         un workflow en <b>n8n</b> consulta una base de conocimiento vectorial (<b>Qdrant + RAG</b>),
         pide a un <b>LLM</b> (Gemini o Claude) una síntesis del problema con pasos de resolución, envía la
         notificación enriquecida por email y, si el incidente es nuevo, lo <b>auto-documenta</b> de vuelta en la
-        base. Todo se opera desde un <b>dashboard propio</b> (React+Vite) que habla con una <b>API .NET 10</b>
+        base. Todo se opera desde un <b>dashboard propio</b> (Next.js) que habla con una <b>API .NET 10</b>
         (<code>rag-api</code>), la cual además ejecuta <b>pruebas de carga k6 on-demand</b> y consulta
         métricas/logs reales. El despliegue es 100% Docker, orquestado por un <code>docker-compose</code> raíz que
         incluye 3 stacks sobre una red compartida <code>argos-net</code>.
@@ -264,7 +264,7 @@ flowchart TB
     <h2><span class="bar"></span>Servicios y puertos</h2>
     <p class="sub">Catálogo de contenedores por stack, con su puerto expuesto y rol.</p>
     <div class="cards">
-      <div class="card"><h3><span class="dot" style="background:var(--cyan)"></span>argos-dashboard <span class="port">:3001</span></h3><p>SPA React+Vite+TS (7 vistas). nginx sirve estáticos y proxya <code>/api</code> → rag-api.</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--cyan)"></span>argos-dashboard <span class="port">:3001</span></h3><p>Next.js + TS, export estático (7 vistas, una ruta cada una). nginx sirve estáticos y proxya <code>/api</code> → rag-api.</p></div>
       <div class="card"><h3><span class="dot" style="background:var(--cyan)"></span>rag-api <span class="port">:8000</span></h3><p>.NET 10 (Argos API): JWT, CRUD, /incidents, /query, /observability, /loadtests. Núcleo del backend.</p></div>
       <div class="card"><h3><span class="dot" style="background:var(--amber)"></span>n8n <span class="port">:5678</span></h3><p>Orquestación del workflow Alert Analysis (webhook → RAG → LLM → email → auto-doc).</p></div>
       <div class="card"><h3><span class="dot" style="background:var(--green)"></span>Qdrant <span class="port">:6333</span></h3><p>Vector DB. Colecciones <code>incidentes</code> y <code>argos_loadtests</code>. Embeddings 384-dim.</p></div>
@@ -288,7 +288,7 @@ flowchart TB
     <table>
       <thead><tr><th>Capa</th><th>Tecnologías</th></tr></thead>
       <tbody>
-        <tr><td>Frontend</td><td>React · Vite · TypeScript · TailwindCSS · lucide-react</td></tr>
+        <tr><td>Frontend</td><td>Next.js · React · TypeScript · TailwindCSS · lucide-react</td></tr>
         <tr><td>Backend / API</td><td>.NET 10 · ASP.NET Core (capas Entities / Repository / Business / Controllers, Autofac) · JWT (auth) · Docker.DotNet (k6 on-demand)</td></tr>
         <tr><td>IA / RAG</td><td>Embeddings locales ONNX Runtime (<code>paraphrase-multilingual-MiniLM-L12-v2</code>, 384-dim, umbral 0.63) · Qdrant · Gemini / Claude</td></tr>
         <tr><td>Orquestación</td><td>n8n (SQLite) · workflow Alert Analysis dual-provider</td></tr>

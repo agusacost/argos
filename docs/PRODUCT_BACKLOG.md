@@ -488,8 +488,10 @@ calculadas.
 >   `rag-api`), no en MembresiaAPI. La sección "API .NET: Endpoints nuevos" de abajo se **re-mapea a `rag-api`**
 >   (`GET /incidents`, `GET /incidents/metrics`, `GET /incidents/knowledge-base`,
 >   `GET /incidents/{id}`, `PATCH /incidents/{id}`). El `POST /upsert` ya existía (Sprint 3/4).
-> - **Dashboard = SPA propia React + Vite + TypeScript** (`dashboard/`), servida por nginx (proxy
+> - **Dashboard = panel propio en React + TypeScript** (`dashboard/`), servido por nginx (proxy
 >   `/api` → `rag-api`, sin CORS). Servicio `argos-dashboard` (puerto 3001) en el stack monitoring.
+>   Se hizo primero con Vite y el 2026-11-10 se migró a **Next.js** (App Router, export estático), como
+>   indicaba la propuesta (Anexo II).
 > - Modelo de incidente enriquecido en el payload Qdrant (`documento` markdown, `severity`,
 >   `detected_at`, `resolved_at`, `mttr_minutes`, estados `nuevo`/`auto_documentado`).
 
@@ -566,7 +568,7 @@ a la Argos API por la decisión de persistencia Qdrant-only.
 
 ### Dashboard de Argos (Frontend)
 
-**Tecnología:** React + Vite + TypeScript (`dashboard/`), servido por nginx (proxy `/api` → `rag-api`).
+**Tecnología:** Next.js 16 (App Router, export estático) + React 19 + TypeScript (`dashboard/`), servido por nginx (proxy `/api` → `rag-api`).
 **Puerto:** 3001 (servicio `argos-dashboard` en stack monitoring).
 
 - [x] Página: Historial de incidentes (`/incidents`)
@@ -865,6 +867,20 @@ hardcodeado (`POLL_MS`) y los switches de Integraciones no tenían efecto.
 > 4. **Cambiar el umbral** reclasifica solo las alertas siguientes; los incidentes guardados no cambian.
 > 5. **Cada cambio al workflow** exige re-importarlo y reactivarlo en n8n (`MSYS_NO_PATHCONV=1` en Git Bash).
 > 6. **Polling**: se aplica en la sesión del Admin que guarda; las demás sesiones lo toman al volver a loguearse o recargar.
+
+### Migración del dashboard a Next.js — ✅ HECHO (2026-11-10)
+
+La propuesta (Anexo II, §V y §VI) indica un panel en **Next.js**; se había construido con Vite.
+
+- [x] Next.js 16 (App Router) con `output: 'export'`: el mismo nginx sirve `out/`; se conservan el proxy
+  `/api` y el bloqueo de endpoints internos (F-13). Dev: `next dev` con rewrite `/api` → `DEV_API_TARGET`.
+- [x] Una ruta por vista (`/incidentes`, `/metricas`, …) con layout compartido; el estado global pasó de
+  `App.tsx` a `src/app-shell/AppProvider.tsx` y la vista activa se deriva de la URL.
+- [x] Sidebar con `<Link>` + `aria-current`; `/usuarios` redirige a un Operador; 404 propio.
+- [x] E2E: nuevo `e2e/routing.spec.ts` (deep links, F5, atrás/adelante, login con deep link, filtro
+  `?estado=`, 404) y suite adaptada. Resultado: **80 pasan, 4 fallan, 2 omitidos**; las 4 fallas
+  (I-04, I-07, K-06, C-01) fallan igual con la versión Vite, no vienen de la migración.
+- [x] React 18 → 19 (requisito de Next 16).
 
 ### Cloud Deployment (AWS o GCP) — ⏳ PENDIENTE (bloquea el cierre del Sprint 6)
 

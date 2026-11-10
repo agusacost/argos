@@ -12,7 +12,7 @@ checklist manual de `docs/VALIDACION_API.md` §2 por una suite repetible.
 | Decisión | Elección | Por qué |
 |---|---|---|
 | Herramienta | **Playwright** (`@playwright/test`, TypeScript) | Mismo lenguaje que el dashboard; navegador real; trazas/video al fallar |
-| Ubicación | `dashboard/e2e/` + `dashboard/playwright.config.ts` | Junto al código que prueba; no entra al build de Vite |
+| Ubicación | `dashboard/e2e/` + `dashboard/playwright.config.ts` | Junto al código que prueba; no entra al build de Next.js |
 | Target | Stack levantado con `docker compose up -d` → `http://localhost:3001` | Integración real: sin mocks de la API |
 | Capas | (A) smoke de API vía `request` de Playwright · (B) E2E de UI | Si falla (A), (B) no corre: aísla si el problema es backend o UI |
 | Navegación | Click en el sidebar (las vistas son estado de React, **no hay rutas URL**) | `App.tsx` usa `activeView`; no se puede hacer `goto('/incidents')` |

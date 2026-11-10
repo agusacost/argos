@@ -2,9 +2,11 @@
 
 **Fecha:** 2026-10-21 · **URL:** http://localhost:3001 · **Código:** `dashboard/src/`
 
-El dashboard es una SPA React + Vite servida por nginx (contenedor `argos-dashboard`). Todo lo que
-muestra sale de la Argos API (.NET 10) a través del proxy `/api` → `rag-api:8000`. No usa rutas URL:
-la vista activa es estado interno de React (`App.tsx`), así que un F5 siempre vuelve al Dashboard.
+El dashboard es una aplicación Next.js (App Router, export estático) servida por nginx (contenedor
+`argos-dashboard`). Todo lo que muestra sale de la Argos API (.NET 10) a través del proxy `/api` →
+`rag-api:8000`. Cada vista tiene su URL (`/`, `/incidentes`, `/conocimiento`, `/metricas`,
+`/pruebas-carga`, `/usuarios`, `/configuracion`; ver `dashboard/src/routes.ts`): un F5 o un enlace
+directo abren esa vista, y `/incidentes?estado=nuevo` abre la lista filtrada.
 
 Roles: **Admin** (acceso total) y **Operador** (lectura + resolver incidentes).
 
