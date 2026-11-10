@@ -1,5 +1,9 @@
+'use client';
+
 import { LayoutDashboard, AlertTriangle, BookOpen, BarChart3, Users, Settings, LogOut, ChevronRight, Gauge } from 'lucide-react';
+import Link from 'next/link';
 import { useApp } from '@/types';
+import { routeFor } from '@/routes';
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -12,7 +16,7 @@ const navItems = [
 ];
 
 export function Sidebar() {
-  const { user, activeView, setActiveView, logout } = useApp();
+  const { user, activeView, logout } = useApp();
   if (!user) return null;
 
   const items = navItems.filter((item) => !item.adminOnly || user.role === 'Admin');
@@ -32,9 +36,10 @@ export function Sidebar() {
           const Icon = item.icon;
           const active = activeView === item.id;
           return (
-            <button
+            <Link
               key={item.id}
-              onClick={() => setActiveView(item.id)}
+              href={routeFor(item.id)}
+              aria-current={active ? 'page' : undefined}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
                 active
                   ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20'
@@ -49,7 +54,7 @@ export function Sidebar() {
                 </span>
               )}
               {active && <ChevronRight className="w-3 h-3 text-cyan-400" />}
-            </button>
+            </Link>
           );
         })}
       </nav>

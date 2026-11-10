@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState } from 'react';
 import { Search, Filter } from 'lucide-react';
 import { useApp } from '@/types';
@@ -27,6 +29,12 @@ export function IncidentsView() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
+
+  // El filtro llega por la URL (?estado=): si cambia sin desmontar la vista, se aplica.
+  useEffect(() => {
+    setEstado(incidentsEstadoFilter);
+    setPage(1);
+  }, [incidentsEstadoFilter]);
 
   useEffect(() => {
     setLoading(true);

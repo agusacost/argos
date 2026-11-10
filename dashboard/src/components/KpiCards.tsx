@@ -1,3 +1,5 @@
+'use client';
+
 import { Clock, AlertTriangle, FileText, TrendingDown, TrendingUp, FileQuestion, Minus } from 'lucide-react';
 import type { ElementType } from 'react';
 import { Sparkline } from './Sparkline';

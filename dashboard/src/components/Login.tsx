@@ -1,3 +1,5 @@
+'use client';
+
 import { useState } from 'react';
 import { Shield, Mail, Lock, Eye, EyeOff, ArrowRight, Activity, Cpu, GitBranch, Zap } from 'lucide-react';
 import { useApp } from '@/types';

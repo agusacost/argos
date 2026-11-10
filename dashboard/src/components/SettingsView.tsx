@@ -1,3 +1,5 @@
+'use client';
+
 import { Bell, Shield, Cpu, Database, Webhook, Save, Sliders, CheckCircle2, AlertCircle, Mail, Plus, X, RefreshCw, Activity } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { checkLlmHealth, getIntegrationsStatus, getSettings, updateSettings } from '@/api';

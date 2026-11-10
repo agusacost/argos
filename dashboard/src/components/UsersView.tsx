@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState } from 'react';
 import { Users, Plus, Trash2, Edit3, Shield, UserCircle, X, Check, AlertCircle } from 'lucide-react';
 import { useApp } from '@/types';

@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect } from 'react';
 import {
   AlertOctagon, AlertTriangle, Info, ChevronRight, Cpu, CheckCircle2,

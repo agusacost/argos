@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState } from 'react';
 import { Clock, TrendingDown, TrendingUp, Target, Gauge, Activity, Zap, Server, Database, Globe } from 'lucide-react';
 import { Sparkline } from './Sparkline';

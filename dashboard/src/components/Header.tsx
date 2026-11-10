@@ -1,3 +1,5 @@
+'use client';
+
 import { Bell, Search, ChevronDown, LogOut, Shield, Zap, X, Cpu, AlertTriangle, Siren, CheckCheck } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '@/types';

@@ -1,31 +1,33 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { AppContext } from './types';
-import type { AppContextType, User, IncidentVM, Metrics } from './types';
-import type { LlmHealth, Notification } from './api';
-import { toIncidentVM } from './adapters';
+'use client';
+
+import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { AppContext } from '@/types';
+import type { AppContextType, User, IncidentVM, Metrics } from '@/types';
+import type { LlmHealth, Notification } from '@/api';
+import { toIncidentVM } from '@/adapters';
+import { routeFor, viewFor, VIEW_ROUTES } from '@/routes';
 import {
   getMetrics, listIncidents, patchIncident,
   loginApi, getMe, setStoredToken, getStoredToken,
   generateDocument, getNotifications, getSettings, getLlmHealth,
-} from './api';
-import { Login } from './components/Login';
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
-import { DashboardView } from './components/DashboardView';
-import { IncidentsView } from './components/IncidentsView';
-import { KnowledgeBaseView } from './components/KnowledgeBaseView';
-import { MetricsView } from './components/MetricsView';
-import { LoadTestsView } from './components/LoadTestsView';
-import { UsersView } from './components/UsersView';
-import { SettingsView } from './components/SettingsView';
-import { IncidentDetailDrawer } from './components/IncidentTable';
+} from '@/api';
 
 const DEFAULT_POLL_SECONDS = 20;
 
-function App() {
+/**
+ * Estado global del panel (sesión, incidentes, métricas, notificaciones, polling).
+ * La vista activa ya no es estado: se deriva de la ruta de Next.js (ver src/routes.ts).
+ */
+export function AppProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeView = viewFor(pathname) ?? '';
+  const incidentsEstadoFilter = activeView === 'incidents' ? (searchParams.get('estado') ?? '') : '';
   const [user, setUser] = useState<User | null>(null);
-  const [activeView, setActiveView] = useState('dashboard');
-  const [incidentsEstadoFilter, setIncidentsEstadoFilter] = useState('');
+  // false hasta intentar restaurar la sesión: evita mostrar el Login un instante con token válido.
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [incidents, setIncidents] = useState<IncidentVM[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -64,14 +66,18 @@ function App() {
   // Try to restore session from stored token
   useEffect(() => {
     const token = getStoredToken();
-    if (!token) return;
+    if (!token) {
+      setSessionChecked(true);
+      return;
+    }
     getMe()
       .then((u) => {
         setUser({ id: u.id, name: u.name, email: u.email, role: u.role as User['role'], avatar: '' });
       })
       .catch(() => {
         setStoredToken(null);
-      });
+      })
+      .finally(() => setSessionChecked(true));
   }, []);
 
   // Intervalo de refresco desde Configuración (polling_interval_seconds)
@@ -114,13 +120,13 @@ function App() {
   const logout = useCallback(() => {
     setStoredToken(null);
     setUser(null);
-    setActiveView('dashboard');
+    router.replace(VIEW_ROUTES.dashboard);
     setSelectedIncidentId(null);
     setIncidents([]);
     setMetrics(null);
     setNotifications([]);
     setLlmHealth([]);
-  }, []);
+  }, [router]);
 
   const resolveIncident = useCallback(async (id: string) => {
     setSelectedIncidentId(null);
@@ -137,10 +143,12 @@ function App() {
   const ctx: AppContextType = {
     user, login, logout,
     activeView,
-    // Navegar desde el menú abre Incidentes sin filtro; solo openIncidents lo fija.
-    setActiveView: (v: string) => { setIncidentsEstadoFilter(''); setActiveView(v); },
+    // Navegar a una vista abre Incidentes sin filtro; solo openIncidents lo fija (?estado=).
+    setActiveView: (v: string) => { router.push(routeFor(v)); },
     incidentsEstadoFilter,
-    openIncidents: (estado = '') => { setIncidentsEstadoFilter(estado); setActiveView('incidents'); },
+    openIncidents: (estado = '') => {
+      router.push(estado ? `${VIEW_ROUTES.incidents}?estado=${encodeURIComponent(estado)}` : VIEW_ROUTES.incidents);
+    },
     selectedIncidentId, setSelectedIncidentId,
     incidents, metrics, loadingIncidents,
     notifications,
@@ -151,37 +159,7 @@ function App() {
     pollingSeconds, setPollingSeconds,
   };
 
-  const renderView = () => {
-    switch (activeView) {
-      case 'dashboard': return <DashboardView />;
-      case 'incidents': return <IncidentsView />;
-      case 'knowledge': return <KnowledgeBaseView />;
-      case 'metrics': return <MetricsView />;
-      case 'loadtests': return <LoadTestsView />;
-      case 'users': return <UsersView />;
-      case 'settings': return <SettingsView />;
-      default: return <DashboardView />;
-    }
-  };
+  if (!sessionChecked) return null;
 
-  return (
-    <AppContext.Provider value={ctx}>
-      {!user ? (
-        <Login />
-      ) : (
-        <div className="flex h-screen bg-[#0a0e14] overflow-hidden">
-          <Sidebar />
-          <div className="flex-1 flex flex-col min-w-0">
-            <Header />
-            <main className="flex-1 overflow-y-auto p-6">
-              <div className="animate-fade-in max-w-7xl mx-auto">{renderView()}</div>
-            </main>
-          </div>
-          <IncidentDetailDrawer />
-        </div>
-      )}
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={ctx}>{children}</AppContext.Provider>;
 }
-
-export default App;

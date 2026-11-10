@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState } from 'react';
 import { KpiCards, MttrChart } from './KpiCards';
 import { IncidentTable } from './IncidentTable';

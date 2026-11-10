@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState } from 'react';
 import { BookOpen, Search, FileText, Cpu, ChevronRight, Plus, Sparkles, Database } from 'lucide-react';
 import { useApp } from '@/types';

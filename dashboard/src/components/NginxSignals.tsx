@@ -1,3 +1,5 @@
+'use client';
+
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Globe, AlertTriangle, Timer } from 'lucide-react';
 import { getNginxMetrics } from '@/api';
