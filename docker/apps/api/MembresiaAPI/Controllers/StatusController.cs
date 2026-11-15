@@ -8,10 +8,12 @@ namespace MembresiaAPI.Controllers
     public class StatusController : ControllerBase
     {
         private readonly IUsuarioBusiness _usuarioBusiness;
+        private readonly ILogger<StatusController> _logger;
 
-        public StatusController(IUsuarioBusiness usuarioBusiness)
+        public StatusController(IUsuarioBusiness usuarioBusiness, ILogger<StatusController> logger)
         {
             _usuarioBusiness = usuarioBusiness;
+            _logger = logger;
         }
 
         [HttpGet]
@@ -30,6 +32,7 @@ namespace MembresiaAPI.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "GET /api/status falló: {Causa}", (ex.InnerException ?? ex).Message);
                 return StatusCode(500, new
                 {
                     status = "ERROR",

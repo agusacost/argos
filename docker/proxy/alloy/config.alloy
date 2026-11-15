@@ -24,30 +24,57 @@ loki.write "loki_endpoint" {
 }
 
 // ============================================================
-// Logs de contenedores via Docker socket (opcional)
-// Para habilitar: montar /var/run/docker.sock en alloy (ver docker-compose.yml)
-// y descomentar este bloque.
+// Logs de aplicación: stdout/stderr de los contenedores del
+// servicio monitoreado (los "nodos de aplicación" de la propuesta),
+// leídos por el socket de Docker (montado :ro en el servicio alloy
+// de docker/proxy/docker-compose.yml). Los de la plataforma Argos
+// (n8n, Qdrant, la Argos API, el stack de observabilidad) quedan
+// afuera: Argos observa el servicio, no a sí mismo.
+//
+// Etiquetas (contrato con la API, no cambiar):
+//   job="docker", container="<nombre sin la barra inicial>"
+//   ej. {job="docker", container="membresia-api"}
+// No llevan `service`/`log_type`, así que no se mezclan con los
+// streams {service="nginx", ...} de las reglas de Loki ni de los
+// tableros de Grafana.
 // ============================================================
-// discovery.docker "all_containers" {
-//   host             = "unix:///var/run/docker.sock"
-//   refresh_interval = "5s"
-// }
-//
-// discovery.relabel "docker_containers" {
-//   targets = discovery.docker.all_containers.targets
-//
-//   rule {
-//     source_labels = ["__meta_docker_container_name"]
-//     regex         = "/(.*)"
-//     target_label  = "container"
-//   }
-// }
-//
-// loki.source.docker "docker_logs" {
-//   host       = "unix:///var/run/docker.sock"
-//   targets    = discovery.relabel.docker_containers.output
-//   forward_to = [loki.write.loki_endpoint.receiver]
-// }
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "15s"
+}
+
+// Filtro opt-in: solo los contenedores que se declaran como parte
+// de la aplicación con el label de Docker `argos.logs=true` (en
+// docker/apps/docker-compose.yml). Ningún nombre de contenedor está
+// escrito acá: el servicio monitoreado decide qué expone.
+discovery.relabel "argos_containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_argos_logs"]
+    regex         = "true"
+    action        = "keep"
+  }
+}
+
+// Reglas aplicadas a cada stream (ven las etiquetas __meta_docker_*).
+discovery.relabel "docker_labels" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.relabel.argos_containers.output
+  labels        = {"job" = "docker"}
+  relabel_rules = discovery.relabel.docker_labels.rules
+  forward_to    = [loki.write.loki_endpoint.receiver]
+}
 
 // ============================================================
 // Nginx access.log - Formato JSON estructurado

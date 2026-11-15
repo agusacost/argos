@@ -7,9 +7,11 @@ namespace MembresiaAPI.Repository
     public class UsuarioRepository : IUsuarioRepository
     {
         private readonly string _connectionString;
+        private readonly ILogger<UsuarioRepository> _logger;
 
-        public UsuarioRepository(IConfiguration configuration)
+        public UsuarioRepository(IConfiguration configuration, ILogger<UsuarioRepository> logger)
         {
+            _logger = logger;
             _connectionString = configuration.GetConnectionString("DefaultConnection")
                 ?? throw new ArgumentNullException(nameof(configuration));
         }
@@ -75,8 +77,10 @@ namespace MembresiaAPI.Repository
                 var result = await command.ExecuteScalarAsync();
                 return result != null;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                // /api/status sigue respondiendo 200 con database="No conectado"; el motivo queda en el log.
+                _logger.LogWarning("Sin conexión a SQL Server: {Causa}", ex.Message);
                 return false;
             }
         }

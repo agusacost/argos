@@ -5,6 +5,9 @@ services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: membresia-sqlserver
+    labels:
+      # Logs de aplicación: Alloy recolecta solo los contenedores con este label (opt-in).
+      argos.logs: "true"
     environment:
       SA_PASSWORD: "YourStrong@Passw0rd"
       ACCEPT_EULA: "Y"
@@ -28,6 +31,9 @@ services:
       dockerfile: api/Dockerfile
     image: aacosta/argos-api:v0.1
     container_name: membresia-api
+    labels:
+      # Logs de aplicación: Alloy recolecta solo los contenedores con este label (opt-in).
+      argos.logs: "true"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=MembresiaDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True
