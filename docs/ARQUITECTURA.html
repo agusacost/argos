@@ -97,7 +97,7 @@
     <span class="chip ok">Sprints 1–5 ✓</span>
     <span class="chip ok">Sprint 6 · k6 ✓</span>
     <span class="chip pend">Sprint 6 · Cloud ⏳</span>
-    <span class="chip">Actualizado 2026-10-06</span>
+    <span class="chip">Actualizado 2026-11-15</span>
   </div>
 </header>
 
@@ -112,7 +112,7 @@
         Argos se monta sobre un stack de <b>observabilidad open-source</b> (Prometheus, Loki, Grafana,
         Alertmanager) y le suma una capa de <b>inteligencia</b>: cuando una alerta por umbral se dispara,
         un workflow en <b>n8n</b> consulta una base de conocimiento vectorial (<b>Qdrant + RAG</b>),
-        pide a un <b>LLM</b> (Gemini o Claude) una síntesis del problema con pasos de resolución, envía la
+        reúne evidencia de logs a partir de <b>Nginx</b> y pide a un <b>LLM</b> (a través de la Argos API, con cadena de respaldo) una síntesis del problema con pasos de resolución, envía la
         notificación enriquecida por email y, si el incidente es nuevo, lo <b>auto-documenta</b> de vuelta en la
         base. Todo se opera desde un <b>dashboard propio</b> (Next.js) que habla con una <b>API .NET 10</b>
         (<code>rag-api</code>), la cual además ejecuta <b>pruebas de carga k6 on-demand</b> y consulta
@@ -168,7 +168,7 @@ flowchart TB
     k6["grafana/k6<br/><small>contenedor on-demand</small>"]:::exp
   end
 
-  llm{{"LLM externo<br/>Gemini / Claude"}}:::ext
+  llm{{"LLM externo<br/>Gemini → Groq → OpenRouter"}}:::ext
   mail{{"📧 SMTP · Email"}}:::ext
 
   %% ---- Tráfico de aplicación ----
@@ -177,6 +177,7 @@ flowchart TB
   nginx -->|proxy| api
   api --> sql
   nginx -. "logs archivo" .-> alloy
+  api -. "logs (label argos.logs=true)" .-> alloy
   alloy -->|push logs| loki
 
   %% ---- Scraping de métricas ----
@@ -196,7 +197,7 @@ flowchart TB
 
   %% ---- Flujo inteligente n8n ----
   n8n -->|"RAG /query"| rag
-  n8n -->|"síntesis + pasos"| llm
+  n8n -->|"/internal/evidence<br/>/internal/llm/generate"| rag
   n8n -->|notificación enriquecida| mail
   n8n -. "si es nuevo: /upsert auto-doc" .-> rag
 
@@ -205,7 +206,7 @@ flowchart TB
   rag --> qdrant
   rag -->|queries reales| prom
   rag -->|queries reales| loki
-  rag -->|"documentar incidente"| llm
+  rag -->|"síntesis, pasos y documentación<br/>(IP seudonimizadas, fallback)"| llm
   rag -->|"Docker socket<br/>lanza sibling"| k6
   k6 -->|genera carga| nginx
 
@@ -239,7 +240,7 @@ flowchart TB
         <h4><span class="seq">① Detección → Diagnóstico IA → Notificación</span></h4>
         <p>Tráfico/ataque llega a <b>nginx</b> → Prometheus/Loki evalúan reglas → <b>Alertmanager</b>
         enruta las alertas de incidente al webhook de <b>n8n</b> → n8n consulta <b>RAG</b> (<code>rag-api /query</code>
-        sobre Qdrant) → arma prompt y pide a <b>Gemini/Claude</b> síntesis + pasos → envía <b>email enriquecido</b>.
+        sobre Qdrant) y pide la <b>evidencia de logs</b> (<code>/internal/evidence</code>: lo que Nginx reporta y, a partir de su upstream, los logs del contenedor) → arma el prompt con el <b>contexto del entorno</b> de Configuración y llama a <code>rag-api /internal/llm/generate</code>, que seudonimiza las IP y recorre la cadena de modelos → envía <b>email enriquecido</b>. n8n no llama a ningún LLM ni guarda sus claves.
         El resto de alertas salen por email tradicional desde Alertmanager (sin doble notificación).</p>
       </div>
       <div class="flowstep">
@@ -266,7 +267,7 @@ flowchart TB
     <div class="cards">
       <div class="card"><h3><span class="dot" style="background:var(--cyan)"></span>argos-dashboard <span class="port">:3001</span></h3><p>Next.js + TS, export estático (7 vistas, una ruta cada una). nginx sirve estáticos y proxya <code>/api</code> → rag-api.</p></div>
       <div class="card"><h3><span class="dot" style="background:var(--cyan)"></span>rag-api <span class="port">:8000</span></h3><p>.NET 10 (Argos API): JWT, CRUD, /incidents, /query, /observability, /loadtests. Núcleo del backend.</p></div>
-      <div class="card"><h3><span class="dot" style="background:var(--amber)"></span>n8n <span class="port">:5678</span></h3><p>Orquestación del workflow Alert Analysis (webhook → RAG → LLM → email → auto-doc).</p></div>
+      <div class="card"><h3><span class="dot" style="background:var(--amber)"></span>n8n <span class="port">:5678</span></h3><p>Orquestación del workflow Alert Analysis (webhook → RAG → evidencia → LLM vía rag-api → email → auto-doc).</p></div>
       <div class="card"><h3><span class="dot" style="background:var(--green)"></span>Qdrant <span class="port">:6333</span></h3><p>Vector DB. Colecciones <code>incidentes</code> y <code>argos_loadtests</code>. Embeddings 384-dim.</p></div>
       <div class="card"><h3><span class="dot" style="background:var(--violet)"></span>Prometheus <span class="port">:9090</span></h3><p>Métricas + 13 reglas de alerta. Scrapea exporters y evalúa umbrales.</p></div>
       <div class="card"><h3><span class="dot" style="background:var(--violet)"></span>Loki <span class="port">:3100</span></h3><p>Agregación de logs + 5 reglas LogQL. Recibe push desde Alloy.</p></div>
@@ -290,7 +291,7 @@ flowchart TB
       <tbody>
         <tr><td>Frontend</td><td>Next.js · React · TypeScript · TailwindCSS · lucide-react</td></tr>
         <tr><td>Backend / API</td><td>.NET 10 · ASP.NET Core (capas Entities / Repository / Business / Controllers, Autofac) · JWT (auth) · Docker.DotNet (k6 on-demand)</td></tr>
-        <tr><td>IA / RAG</td><td>Embeddings locales ONNX Runtime (<code>paraphrase-multilingual-MiniLM-L12-v2</code>, 384-dim, umbral 0.63) · Qdrant · Gemini / Claude</td></tr>
+        <tr><td>IA / RAG</td><td>Embeddings locales ONNX Runtime (<code>paraphrase-multilingual-MiniLM-L12-v2</code>, 384-dim, umbral 0.68 + señal por nombre de alerta) · Qdrant · Gemini con respaldo en Groq y OpenRouter</td></tr>
         <tr><td>Orquestación</td><td>n8n (SQLite) · workflow Alert Analysis dual-provider</td></tr>
         <tr><td>Observabilidad</td><td>Prometheus · Loki · Grafana · Alertmanager · Alloy · exporters</td></tr>
         <tr><td>Aplicación demo</td><td>.NET 10 Minimal API · SQL Server 2022</td></tr>
@@ -307,7 +308,7 @@ flowchart TB
     <div class="cards">
       <div class="card"><h3>🌐 argos-net</h3><p>Red bridge externa creada una vez (<code>docker network create argos-net</code>). Todos los stacks la declaran <code>external: true</code> para comunicarse entre sí.</p></div>
       <div class="card"><h3>📦 docker-compose raíz</h3><p><code>include:</code> de monitoring + apps + proxy. Un solo <code>docker compose up -d --build</code> levanta toda la plataforma.</p></div>
-      <div class="card"><h3>☁️ Sprint 6 (pendiente)</h3><p>Deploy en GCP/AWS adaptando el provider de Terraform + medición final de MTTR, latencia y error rate para la memoria académica.</p></div>
+      <div class="card"><h3>☁️ Nube (pendiente)</h3><p>El módulo Terraform <code>argos-node</code> (VPC, security group, EC2, cloud-init) se probó contra LocalStack; falta aplicarlo en AWS con <code>terraform/environments/aws</code>.</p></div>
     </div>
   </section>
 

@@ -105,6 +105,7 @@ Todos la ven; solo Admin puede editar y guardar (el Operador ve los controles de
 | C-03 | Auto-documentación | ON: n8n documenta los incidentes nuevos con el LLM. OFF: quedan en `nuevo`. | ídem |
 | C-04 | Pool de destinatarios | Emails que reciben el análisis de cada alerta (n8n). Validación de formato y duplicados, máximo 50; vacío → `ALERT_RECIPIENT_EMAIL`. | ídem |
 | C-05 | Integraciones en vivo | Estado up/down + latencia de Prometheus, Loki, Qdrant, etc.; refresco cada 30 s y manual. | `GET /integrations/status` |
+| C-08 | Contexto del entorno | Texto libre (tope 3000 caracteres, contador N/3000; 422 si se excede) con la descripción del servicio monitoreado: contenedores, comandos y herramientas que corresponden. Se agrega al prompt del análisis (n8n, vía `Get Config`) y al de "Generar documentación". Valor inicial: `ARGOS_ENVIRONMENT_CONTEXT` del despliegue mientras no se edite; vacío a propósito = prompt genérico. Solo Admin edita. | `GET/PATCH /settings`, `GET /internal/config` |
 | C-06 | Refresco automático | Slider 10–120 s para el polling del dashboard (S-07). | `PATCH /settings` |
 | C-07 | Guardar | Persiste todo junto; muestra "Guardado correctamente", aviso no bloqueante o error. | `PATCH /settings` |
 

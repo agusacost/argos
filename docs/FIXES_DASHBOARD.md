@@ -3,6 +3,18 @@
 **Fecha:** 2026-10-21 · **Origen:** suite E2E `dashboard/e2e/` (Playwright, stack real) + revisión del código.
 **IDs:** los de [`FUNCIONALIDADES_DASHBOARD.md`](FUNCIONALIDADES_DASHBOARD.md).
 
+**Estado al 2026-11-15:** F-02, F-03, F-04, F-05, F-06 y F-10 están **implementados y confirmados** por la suite E2E
+completa, que se volvió a correr el 15/11 contra el stack real: **103 pruebas, 101 aprobadas, 0 fallidas, 2 omitidas**
+(S-06 y I-07 se omiten solas cuando no hay notificaciones sin leer ni incidentes en estado `nuevo`; I-07, la que llama al
+LLM, queda por lo tanto sin confirmar). I-04, K-06 y C-01, que fallaban desde la migración a Next.js, ahora pasan. La
+corrida encontró dos cosas: (1) **M-04, defecto real del panel**: la consulta de latencia P50/P95/P99 no agrupaba y Loki
+devolvía una serie por combinación de etiquetas; el panel tomaba la primera (la latencia mostrada no era la del conjunto) y
+en el rango de 6 h Loki respondía 400 por superar las 500 series. Corregido con `by (service)` en `NginxMetricsService`
+(+4 pruebas unitarias, 106 en total). (2) Una prueba de C-01 buscaba cualquier `role=alert` y chocaba con el anunciador
+de rutas de Next.js: era un defecto de la prueba. Se agregaron tres verificaciones de C-08 (campo «Contexto del
+entorno»: guardar y persistir, tope de 3000 → 422, solo lectura para el Operador). La corrida del 11/11 se había cortado
+por falta de memoria. F-12 sigue abierto.
+
 ## Resultado de la corrida
 
 `npm run test:e2e:full` (API + UI + LLM + k6): **69 tests → 55 OK, 13 fallan, 1 omitido** (S-06: hay más de 9
@@ -97,32 +109,39 @@ Nginx), ambas **validadas E2E** con el escenario `flood` de k6 corriendo en vivo
 
 ## Media
 
-### F-02 · "Marcar como Resuelto" no refresca la lista de Incidentes — I-06
+### F-02 · "Marcar como Resuelto" no refresca la lista de Incidentes — I-06 · ✅ IMPLEMENTADO (2026-11-11, E2E confirmado el 15/11)
 - **Evidencia:** `incidents.spec.ts` I-06: con el filtro "pendiente", después de resolver la fila sigue en la
   lista con el estado viejo (la API sí quedó en `resuelto`).
 - **Causa:** `App.resolveIncident` / `documentIncident` llaman a `loadData()` del contexto (Dashboard), pero
   `IncidentsView` tiene sus propias `rows` locales y no se entera.
-- **Fix sugerido:** exponer un contador `incidentsVersion` en el contexto que se incremente tras cada mutación y
-  agregarlo a las dependencias del `useEffect` de `IncidentsView` (y de `KnowledgeBaseView`).
+- **Fix aplicado:** contador `incidentsVersion` en `AppProvider` (más `refreshIncidents()`), que se incrementa tras
+  cada mutación y está en las dependencias del `useEffect` de `IncidentsView` y de `KnowledgeBaseView`.
+- **Verificación pendiente:** I-06 no se volvió a correr (ver estado arriba).
 
-### F-03 · Errores de "Aprobar y Auto-documentar" / "Marcar como Resuelto" no se muestran — I-06, I-07
+### F-03 · Errores de "Aprobar y Auto-documentar" / "Marcar como Resuelto" no se muestran — I-06, I-07 · ✅ IMPLEMENTADO (2026-11-11, E2E confirmado el 15/11)
 - **Evidencia:** I-07 en la 2.ª corrida: Gemini respondió `503 UNAVAILABLE (high demand)` → API 502. En la UI el
   panel se cierra al hacer click y **no aparece ningún error**; el incidente sigue en `nuevo` sin que el usuario
   sepa por qué.
 - **Causa:** `App.tsx` cierra el drawer (`setSelectedIncidentId(null)`) **antes** de esperar la llamada, y el
   drawer invoca `void documentIncident(...)` → la promesa rechazada no la captura nadie.
-- **Fix sugerido:** esperar la respuesta con el panel abierto (spinner ya existe), mostrar el `detail` del error
-  y cerrar solo si salió bien. Opcional en la API: 1-2 reintentos con backoff ante 503/429 del proveedor LLM.
+- **Fix aplicado:** el panel de detalle (`IncidentTable.tsx`) espera la respuesta con el panel abierto; si falla,
+  muestra el motivo que devolvió el servidor, aclara que el incidente no se modificó y permite reintentar. Solo se
+  cierra si salió bien. Los reintentos con backoff ante 503/429 del proveedor LLM no se implementaron.
+- **Verificación pendiente:** I-06 e I-07 (esta última falla igual con Vite, es un pendiente previo) no se
+  volvieron a correr. Hay pruebas nuevas de errores visibles al documentar y al resolver, sin ejecutar completas.
 
-### F-04 · Los runbooks manuales no muestran su documentación — K-05
+### F-04 · Los runbooks manuales no muestran su documentación — K-05 · ✅ IMPLEMENTADO (2026-11-11, E2E confirmado el 15/11)
 - **Evidencia:** `knowledge-base.spec.ts` K-05: al abrir un runbook no se muestra ningún markdown. Los 5
   `documentado_previamente` tienen `documento` vacío; los `auto_documentado` sí lo tienen.
 - **Causa:** `Argos.Repository/Knowledge/MarkdownKnowledgeSource.cs` solo lee el frontmatter YAML
   (`tipo_alerta`, `resumen`, `pasos`…) y **descarta el cuerpo** del `.md` (secciones Contexto, Diagnóstico, etc.).
-- **Fix sugerido:** asignar el cuerpo después del frontmatter a `Documento`. Como el seed es idempotente y no
-  pisa registros existentes, hay que re-seedear los 5 runbooks (o hacer que el seed actualice si `documento` está vacío).
+- **Fix aplicado:** `MarkdownKnowledgeSource` asigna el cuerpo posterior al frontmatter a `Documento`, y
+  `SeedService` completa el documento de los runbooks ya existentes cuando está vacío (sin pisar los que lo tienen),
+  así que también corrige instalaciones existentes.
+- **Verificado:** en los logs de la API, "documento completado" en los cinco runbooks; un test unitario comprueba que los
+  cinco runbooks incluidos traen documento. K-05 (E2E) no se volvió a correr.
 
-### F-05 · Filtro "por tipo" exige el nombre exacto — I-04
+### F-05 · Filtro "por tipo" exige el nombre exacto — I-04 · ✅ IMPLEMENTADO (2026-11-11, E2E confirmado el 15/11)
 - **Evidencia:** `incidents.spec.ts` I-04: escribir `Nginx` → 0 resultados (`GET /incidents?tipo=Nginx` → `total: 0`);
   `tipo=NginxDown` sí funciona.
 - **Causa:** la API filtra `tipo_alerta` por igualdad en Qdrant, pero el input es texto libre ("Filtrar por tipo…")
@@ -130,12 +149,21 @@ Nginx), ambas **validadas E2E** con el escenario `flood` de k6 corriendo en vivo
 - **Fix sugerido (elegir uno):** (a) en la UI, reemplazar el input por un `<select>` con los tipos de
   `metrics.by_alert_type`; o (b) en la API, filtro por substring case-insensitive igual que `search`.
   La opción (a) es más simple y no toca la API.
+- **Fix aplicado:** se tomó la opción (b): `GET /incidents?tipo=` es coincidencia parcial y no distingue mayúsculas
+  (`IncidentFilter` / `IncidentRepository`); lo cubren tests unitarios. `eval/run-auto.mjs` pasó a exigir el tipo
+  exacto del lado del cliente. Sigue disparándose una request por tecla (ver F-12). I-04 (E2E) no se volvió a correr.
 
-### F-06 · Botón "Nuevo Documento" sin funcionalidad — K-06
+### F-06 · Botón "Nuevo Documento" sin funcionalidad — K-06 · ✅ IMPLEMENTADO (2026-11-11, E2E confirmado el 15/11)
 - **Evidencia:** `knowledge-base.spec.ts` K-06: el click no hace nada.
 - **Dónde:** `KnowledgeBaseView.tsx`: el `<button>` no tiene `onClick`.
 - **Fix sugerido:** quitarlo, o implementarlo: modal (tipo de alerta, resumen, pasos, markdown) →
   `POST /upsert` con `estado=documentado_previamente`, `fuente=manual`.
+- **Fix aplicado:** "Nuevo documento" abre `NewKnowledgeDocModal.tsx` (solo Administrador) que crea un runbook manual
+  con `POST /incidents/knowledge-base` (no `/upsert`, que es interno). Valida los campos, muestra los errores del
+  servidor sin perder lo cargado y deja auditoría. Se agregó `DELETE /incidents/{id}` (solo Administrador).
+- **Verificación pendiente:** K-06 y las pruebas nuevas de alta de documento y borrado no se volvieron a correr
+  completas. El documento de prueba `DotnetMigrationE2E` sigue en la base de conocimiento; ahora se puede borrar con
+  ese endpoint.
 
 ### F-07 · El umbral de la Base de Conocimiento está fijo en 0.63 — K-02 · ✅ CORREGIDO (2026-10-26)
 - **Evidencia:** `settings.spec.ts` K-02: se guarda 0.75 en Configuración y el banner sigue mostrando `0.63`.
@@ -155,12 +183,15 @@ Nginx), ambas **validadas E2E** con el escenario `flood` de k6 corriendo en vivo
 - **Evidencia:** `auth.spec.ts` S-05: el `<h1>` muestra `Argos`.
 - **Fix aplicado:** `loadtests: 'Pruebas de Carga'` en el mapa `titles` de `Header.tsx`. Verificado: `auth.spec.ts` en verde.
 
-### F-10 · Modelo LLM de otro proveedor se guarda sin aviso — C-01
+### F-10 · Modelo LLM de otro proveedor se guarda sin aviso — C-01 · ✅ IMPLEMENTADO (2026-11-11, E2E confirmado el 15/11)
 - **Evidencia:** `settings.spec.ts` C-01 (2.º): con proveedor Gemini, `modelo-sin-prefijo-e2e` → **200** sin
   `warning`. En la configuración queda guardado un modelo que nunca se usa (`LlmService.Resolve` usa el default
   si no empieza con el prefijo del proveedor). Un `gemini-*` inexistente sí da 422 ✅.
 - **Fix sugerido:** en `SettingsService.UpdateAsync`, si el modelo no tiene el prefijo del proveedor → 422 o
   `warning` ("se usará <default>").
+- **Fix aplicado:** se tomó el 422. `SettingsValidator.ValidateModelForProvider` rechaza un modelo que no corresponde
+  al proveedor, con un mensaje claro; `SettingsView.tsx` lo muestra junto al botón de guardar y ofrece descartar los
+  cambios. Cubierto por tests unitarios. C-01 (E2E) no se volvió a correr.
 
 ### F-11 · Elementos decorativos / datos fijos
 - **Header:** el buscador "Buscar incidentes..." no hace nada; los badges "Sistema Operativo" e "IA Activa" son

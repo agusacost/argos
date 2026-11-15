@@ -87,6 +87,8 @@
   - 2 pipelines file-based:
     - Access logs: JSON → parsing → labels (service, status, method, host, remote_addr) → Loki
     - Error logs: regex → labels (service, level) → Loki
+  - Logs de aplicación: stdout/stderr de los contenedores de la plataforma vía socket de Docker
+    (ver [Logs de aplicación con Alloy](#logs-de-aplicación-con-alloy))
   - Loki endpoint: http://loki:3100/loki/api/v1/push
 
 - **Exporters**:
@@ -217,17 +219,111 @@ docker compose down
 docker compose down -v
 ```
 
-### (Opcional) Terraform + LocalStack
+### Infraestructura como código (Terraform: LocalStack y AWS)
 
-Solo para gestionar la infraestructura simulada AWS (EC2 mock). **No levanta Docker** por defecto:
-
-```powershell
-cd D:\DEV\argos\terraform\environments\localstack
-terraform init
-terraform apply   # solo gestiona infra LocalStack; Docker se maneja manualmente
+```
+terraform/
+├── modules/argos-node/          — la infraestructura (compartida)
+│   ├── main.tf                  VPC + subred pública + IGW, security group, EC2, Elastic IP
+│   ├── bootstrap.tf             user_data (cloud-init) + secretos generados
+│   ├── scripts/base.sh          Docker Engine + Compose plugin + git
+│   └── templates/deploy.sh.tftpl  .env, clone del repo, argos-net, docker compose up -d --build
+└── environments/
+    ├── localstack/              provider con endpoints de LocalStack + credenciales de prueba
+    └── aws/                     provider real (credenciales por la cadena estándar de AWS)
 ```
 
-Para usar el provisioner Terraform (modo legacy): `terraform apply -var provision_docker=true`
+`main.tf`, `variables.tf` y `outputs.tf` son **idénticos** en los dos entornos: ambos instancian el módulo
+`argos-node`. Lo que cambia es `providers.tf` (endpoints/credenciales) y los valores de `terraform.tfvars`.
+LocalStack agrega además `localstack.tf` (bloque `moved` para el state anterior y el despliegue local opcional).
+
+**Qué crea el módulo:** una VPC dedicada con una subred pública, un security group con superficie mínima y
+una instancia Ubuntu 24.04 (por defecto `t3.xlarge`, 4 vCPU / 16 GiB, disco gp3 cifrado de 50 GB, IMDSv2
+obligatorio) con Elastic IP.
+
+| Puerto | Origen | Servicio |
+|--------|--------|----------|
+| 80, 8443 | Internet | Nginx (HTTP / HTTPS autofirmado) |
+| 3001, 3000 | `admin_cidr_blocks` | Panel de Argos, Grafana |
+| 22 | `admin_cidr_blocks` (solo si hay `ssh_public_key`) | SSH |
+
+Prometheus, Loki, Alertmanager, Qdrant, n8n, la API y SQL Server **no** se exponen: se accede por túnel SSH
+(`terraform output ssh_command`).
+
+**Primer arranque (cloud-init):** instala Docker, escribe `/etc/argos/argos.env` desde `argos_env` (variable
+`sensitive`; `N8N_ENCRYPTION_KEY`, `JWT_SECRET`, `ARGOS_INTERNAL_TOKEN` y `ARGOS_ADMIN_PASSWORD` se generan al azar
+si no se pasan), clona `repo_url`@`repo_ref` en `/opt/argos`, copia el `.env` a `docker/monitoring/.env`, crea
+`argos-net`, ejecuta `docker compose -p argos-platform up -d --build` e importa/activa el workflow de n8n.
+Log en `/var/log/argos-deploy.log`. Para actualizar el código después: `sudo argos-deploy` en la VM.
+
+#### AWS
+
+```powershell
+cd terraform\environments\aws
+copy terraform.tfvars.example terraform.tfvars   # completar: admin_cidr_blocks, ssh_public_key, argos_env
+$env:AWS_PROFILE = "mi-perfil"                    # o AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+terraform init
+terraform plan
+terraform apply
+terraform output urls
+terraform output -raw argos_admin_password        # usuario admin@argos.local del panel
+```
+
+Después del apply (el build inicial tarda varios minutos):
+
+1. Seguir el progreso: `ssh ubuntu@<ip> tail -f /var/log/argos-deploy.log`.
+2. Crear la credencial SMTP del nodo "Notify Email" en n8n (túnel: `ssh -L 5678:localhost:5678 ubuntu@<ip>`,
+   abrir http://localhost:5678) y reactivar el workflow.
+3. `terraform destroy` al terminar (la instancia y la Elastic IP tienen costo).
+
+**Secretos:** `terraform.tfvars` y el state están en `.gitignore`. El state y el user_data contienen el `.env`
+en claro: no compartir el state; para trabajo en equipo usar un backend S3 cifrado.
+
+#### LocalStack
+
+```powershell
+cd terraform\environments\localstack
+copy terraform.tfvars.example terraform.tfvars
+terraform init
+terraform plan
+terraform apply                                   # VPC, SG, EC2 y EIP simulados
+terraform apply -var deploy_local_stack=true      # además: docker compose up con el Docker local
+```
+
+En LocalStack la EC2 es simulada: el user_data se registra pero no corre en una VM real, por eso
+`deploy_local_stack` reproduce el `docker compose up` contra el Docker local (usa el `docker/monitoring/.env`
+local). El despliegue local habitual sigue siendo `docker compose up -d --build` desde la raíz.
+
+### Integración continua (GitHub Actions)
+
+`.github/workflows/ci.yml` corre en cada push y pull request. Es **CI, no CD**: valida y compila, no despliega.
+
+| Job | Qué valida |
+|-----|-----------|
+| `terraform` | `terraform fmt -check -recursive` + `init -backend=false` y `validate` de `localstack` y `aws` |
+| `observability-config` | `promtool check config` / `check rules`, `amtool check-config`, `alloy fmt` + arranque del grafo de Alloy, JSON del workflow de n8n |
+| `compose` | `docker compose config` del compose raíz (con `docker/monitoring/.env.example`) |
+| `argos-api` | `dotnet restore/build` de `Argos.slnx` + `dotnet test` (corre los proyectos de test que existan) |
+| `membresia-api` | `dotnet build` de `MembresiaAPI.csproj` |
+| `dashboard` | `npm install` + `next build` (export estático); `npm install` porque `package-lock.json` está ignorado |
+
+### Logs de aplicación con Alloy
+
+Además de los archivos de Nginx, Alloy lee stdout/stderr de los contenedores **de la aplicación monitoreada** por
+el socket de Docker (`discovery.docker` → `discovery.relabel` → `loki.source.docker`, socket montado `:ro`):
+
+- Opt-in: solo los contenedores con el label de Docker `argos.logs=true` (hoy `membresia-api` y
+  `membresia-sqlserver`, en `docker/apps/docker-compose.yml`). Los de la plataforma Argos quedan afuera.
+- Etiquetas: `job="docker"`, `container="<nombre>"`. Sin `service`/`log_type`, así que no afectan a las reglas
+  de Loki ni a los tableros, que filtran por `{service="nginx", ...}`.
+
+```logql
+{job="docker", container="membresia-api"} |= "Exception"
+```
+
+Argos no lee estos logs por nombre: los usa solo cuando Nginx reporta a ese contenedor como upstream de los errores
+(ver `argos-api/README.md`, "Evidencia de logs"). Aplicar el cambio en un stack ya levantado:
+`docker compose -p argos-platform up -d alloy api sqlserver`.
 
 ---
 
@@ -275,17 +371,17 @@ SMTP_PORT=587
 SMTP_USER=observabilidad@example.com
 SMTP_PASSWORD=<app-password>
 SMTP_FROM=observabilidad@example.com
+# Contexto del entorno de los prompts (valor inicial; después se edita en Configuración del panel). Vacío = prompt genérico.
+ARGOS_ENVIRONMENT_CONTEXT="Un único host con Docker Compose, sin Kubernetes ni systemd. Servicio monitoreado: membresia-api ..."
 ```
 
 Copiá `docker/monitoring/.env.example` a `docker/monitoring/.env` y completá los valores reales.
 `.env` está en `.gitignore` — nunca commitees la `ANTHROPIC_API_KEY`.
 
-### `terraform/environments/localstack/terraform.tfvars` (opcional)
+### `terraform/environments/<entorno>/terraform.tfvars`
 
-```hcl
-instance_type = "t3.medium"
-project_root  = "D:/DEV/argos"
-```
+Copiar el `terraform.tfvars.example` del entorno (`localstack` o `aws`). Ver
+[Infraestructura como código](#infraestructura-como-código-terraform-localstack-y-aws).
 
 ---
 
@@ -331,9 +427,9 @@ project_root  = "D:/DEV/argos"
    - Limitación: se pierde al `down/up` del stack
    - Mitigación: guardar credential ID en n8n UI tras setup manual
 
-4. **Alloy docker discovery deshabilitado**
-   - Limitación: Podman/Windows no soporta socket mount
-   - Fallback: file-based log collection activo (funciona correctamente)
+4. **Logs de contenedores requieren el socket de Docker**
+   - Alloy monta `/var/run/docker.sock` (Docker Engine en Linux y Docker Desktop lo soportan; con Podman en
+     Windows el montaje puede fallar). Los logs de Nginx por archivo no dependen del socket.
 
 ---
 

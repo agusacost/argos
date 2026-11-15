@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Argos — Simulación de defensa</title>
+<title>Acosta_PFC_simula-defensa</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
@@ -355,17 +355,17 @@ svg text{font-family:Inter,"Segoe UI",sans-serif}
 <!-- 13 · RESULTADOS · CUMPLIMIENTO -->
 <section class="slide">
   <div class="tag">Resultados · Cumplimiento de objetivos</div>
-  <h2>El prototipo cumple el 93 % de los objetivos específicos</h2>
+  <h2>El prototipo cumple el 95 % de los objetivos específicos</h2>
   <table>
     <tr><th style="width:20%">Objetivo</th><th>Logrado</th><th style="width:24%">Pendiente</th><th style="width:15%">Avance</th></tr>
-    <tr><td><b>OE1</b> Observabilidad</td><td>3 stacks como código y 18 reglas</td><td>Migración a GCP o AWS</td><td><b>85 %</b><div class="bar"><i style="width:85%"></i></div></td></tr>
+    <tr><td><b>OE1</b> Observabilidad</td><td>Módulo Terraform (LocalStack y AWS), CI y 18 reglas</td><td>Aplicar el módulo en AWS</td><td><b>90 %</b><div class="bar"><i style="width:90%"></i></div></td></tr>
     <tr><td><b>OE2</b> Capa inteligente</td><td>RAG, n8n, cadena de LLM, autodoc y panel</td><td>—</td><td><b>100 %</b><div class="bar"><i style="width:100%"></i></div></td></tr>
     <tr><td><b>OE3</b> Validación</td><td>k6, 7 fallas, calidad, aprendizaje y tiempos</td><td>Línea base manual de MTTR</td><td><b>95 %</b><div class="bar"><i style="width:95%"></i></div></td></tr>
   </table>
   <div class="grid g3">
     <div class="card stat"><div class="big">5/6</div><p class="s20">sprints cerrados</p></div>
     <div class="card stat"><div class="big">15</div><p class="s20">contenedores</p></div>
-    <div class="card stat"><div class="big">69</div><p class="s20">pruebas E2E del panel</p></div>
+    <div class="card stat"><div class="big">101/103</div><p class="s20">pruebas E2E del panel aprobadas</p></div>
   </div>
 </section>
 
@@ -387,7 +387,7 @@ svg text{font-family:Inter,"Segoe UI",sans-serif}
   <h2>El contexto que recupera el RAG pesa más que el modelo elegido</h2>
   <ul>
     <li><b>Objetivo general cumplido:</b> Argos detecta, propone en ~1 minuto y documenta lo nuevo, también con el proveedor principal caído.</li>
-    <li><b>Contexto antes que modelo:</b> describir el stack real en el prompt fue el ajuste más barato y el de mayor efecto.</li>
+    <li><b>Contexto antes que modelo:</b> describir el entorno real en el prompt fue el ajuste más barato y el de mayor efecto; hoy es un campo de configuración, no código.</li>
     <li><b>Umbral calibrado por costo:</b> un falso «conocida» copia la solución equivocada; por eso 0,68 y no 0,63.</li>
     <li><b>Frente a AIOps [1], [4]:</b> Argos suma la autodocumentación que esas soluciones no persisten.</li>
     <li><b>Lo que no se afirma:</b> un porcentaje de reducción del MTTR, porque falta la línea base manual.</li>
@@ -403,8 +403,8 @@ svg text{font-family:Inter,"Segoe UI",sans-serif}
       <tr><th>Dificultad</th><th>Ajuste</th></tr>
       <tr><td><code>gemini-flash-latest</code> falló 17/17 por saturación</td><td>Principal <code>flash-lite</code> + respaldo</td></tr>
       <tr><td>La misma alerta puntuaba 0,40 contra su propio documento</td><td>Guardar con el mismo texto que se busca</td></tr>
-      <tr><td>Con 0,63 hubo un falso «conocida»</td><td>Umbral 0,68 tras un barrido</td></tr>
       <tr><td>Endpoints internos permitían falsear la KB</td><td>Token interno y bloqueo en el proxy</td></tr>
+      <tr><td>Argos conocía los contenedores del servicio</td><td>Inferir desde Nginx; contexto y runbooks como configuración</td></tr>
     </table>
     <div class="card">
       <h3>Limitaciones</h3>
@@ -412,7 +412,7 @@ svg text{font-family:Inter,"Segoe UI",sans-serif}
         <li>Sin línea base manual de MTTR</li>
         <li>Operador simulado</li>
         <li>Rúbrica puntuada por un LLM y revisada por el autor</li>
-        <li>Muestras chicas y entorno local</li>
+        <li>Muestras chicas y entorno local; IaC probada solo en LocalStack</li>
       </ul>
     </div>
   </div>
@@ -424,10 +424,10 @@ svg text{font-family:Inter,"Segoe UI",sans-serif}
   <div class="tag">Cierre · Trabajos futuros</div>
   <h2>Próximos pasos</h2>
   <div class="grid g2" style="gap:14pt">
-    <div class="card hl"><h3>1 · Nube</h3><p class="s20">Desplegar en GCP o AWS con el mismo Terraform y medir latencia y error rate.</p></div>
+    <div class="card hl"><h3>1 · Nube</h3><p class="s20">Aplicar en AWS el módulo Terraform ya probado en LocalStack y medir latencia y error rate.</p></div>
     <div class="card hl"><h3>2 · Estudio con operadores</h3><p class="s20">Medir el MTTR con y sin Argos; las herramientas ya están en el repositorio.</p></div>
-    <div class="card"><h3>3 · Mejor coincidencia</h3><p class="s20">Sumar el tipo exacto de alerta como señal además de la similitud.</p></div>
-    <div class="card"><h3>4 · Privacidad y seguridad</h3><p class="s20">Enmascarar IP antes de enviar texto a los LLM y sumar un WAF delante de Nginx.</p></div>
+    <div class="card"><h3>3 · Detección por contenido</h3><p class="s20">Un WAF o reglas de Loki por patrón para escaneos e intentos de inyección.</p></div>
+    <div class="card"><h3>4 · Secretos y métricas</h3><p class="s20">Revisar secretos en los documentos antes de enviarlos al LLM (las IP ya se seudonimizan) y exponer métricas con OpenTelemetry.</p></div>
   </div>
   <p class="quote"><b>Muchas gracias.</b> Quedo a disposición para sus preguntas.</p>
 </section>

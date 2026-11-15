@@ -56,7 +56,7 @@ Además inyecté fallas reales en diez corridas. La propuesta llegó en **1,1 mi
 
 ### 13 — Cumplimiento · *6:20 – 6:40*
 
-El OE1 está al **85 %**: falta migrar a la nube. El OE2 está **completo**. El OE3, al **95 %**: no medí la línea base manual y lo declaro como limitación. En total, el prototipo cumple el 93 %.
+El OE1 está al **90 %**: la infraestructura es un módulo de Terraform probado contra LocalStack, con integración continua, y falta aplicarlo en AWS. El OE2 está **completo**. El OE3, al **95 %**: no medí la línea base manual y lo declaro como limitación. En total, el prototipo cumple el 95 %.
 
 ### 14 — Aporte · *6:40 – 7:00*
 
@@ -68,11 +68,11 @@ Los resultados muestran que el contexto que recupera el RAG pesa más que el mod
 
 ### 16 — Dificultades y limitaciones · *7:20 – 7:40*
 
-Las dificultades vinieron de los servicios externos: el modelo original falló las 17 solicitudes por saturación, una alerta no se reconocía a sí misma y el umbral 0,63 daba un falso «conocida». Cada una tiene su ajuste. ✂️ Las limitaciones son el operador simulado, la rúbrica puntuada por un LLM y las muestras chicas.
+Las dificultades vinieron de los servicios externos: el modelo original falló las 17 solicitudes por saturación, y una alerta no se reconocía a sí misma. Cada una tiene su ajuste. En el cierre encontré además que Argos conocía de antemano los contenedores del servicio que observa: hoy la evidencia se infiere desde Nginx, y el contexto y los runbooks son configuración. ✂️ Las limitaciones son el operador simulado, la rúbrica puntuada por un LLM y las muestras chicas.
 
 ### 17 — Trabajos futuros · *7:40 – 8:00*
 
-Lo que sigue es desplegar en GCP o AWS, hacer el estudio con operadores reales para medir la reducción del MTTR, mejorar la coincidencia por tipo de alerta y enmascarar datos sensibles. Muchas gracias; quedo a disposición para sus preguntas.
+Lo que sigue es aplicar el módulo de Terraform en AWS, hacer el estudio con operadores reales para medir la reducción del MTTR, sumar detección por contenido de los requests y revisar secretos en los documentos antes de enviarlos al modelo. Muchas gracias; quedo a disposición para sus preguntas.
 
 ---
 

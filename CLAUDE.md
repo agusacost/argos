@@ -2,16 +2,16 @@
 
 **Proyecto:** Argos — Plataforma inteligente de AIOps  
 **Alumno:** Juan Agustín Acosta (LU 57851)  
-**Fecha:** 2026-08-03
+**Fecha:** 2026-08-03 (última actualización: 2026-11-15)
 
 ---
 
 ## Contexto del proyecto
 
-Argos es una plataforma AIOps construida sobre un stack de observabilidad open-source (Prometheus, Loki, Grafana, Alertmanager). Detecta incidentes por umbrales, genera síntesis del problema + pasos de resolución mediante IA (Claude API + RAG), y documenta automáticamente casos no registrados.
+Argos es una plataforma AIOps construida sobre un stack de observabilidad open-source (Prometheus, Loki, Grafana, Alertmanager). Detecta incidentes por umbrales, genera síntesis del problema + pasos de resolución mediante IA (LLM con cadena de respaldo Gemini → Groq → OpenRouter + RAG), y documenta automáticamente casos no registrados.
 
-**Estado actual:** Sprints 1-5 completados; Sprint 6 pendiente
-- ✅ Terraform + LocalStack + 3 stacks Docker (monitoring, proxy, apps)
+**Estado actual:** Sprints 1-5 completados; Sprint 6 casi cerrado (falta aplicar Terraform en AWS real + memoria)
+- ✅ Terraform (módulo `argos-node` + entornos `localstack`/`aws`, ver "Cierre de noviembre") + LocalStack + 3 stacks Docker (monitoring, proxy, apps)
 - ✅ Alertas Prometheus (13) + Loki (5)
 - ✅ Grafana + 3 dashboards
 - ✅ Alloy log collection
@@ -80,7 +80,8 @@ Argos es una plataforma AIOps construida sobre un stack de observabilidad open-s
   Embeddings con ONNX Runtime + `Microsoft.ML.Tokenizers`, Qdrant por REST, JWT HS256 + bcrypt. Validado: n8n
   (alerta simulada y real), k6 on-demand, "Generar documentación" con LLM, arranque limpio. Detalle:
   `argos-api/README.md`; checklist de UI pendiente en `docs/VALIDACION_API.md`.
-  - **Gotcha:** tras recrear el contenedor `argos-rag-api`, hacer `docker restart argos-dashboard` (nginx cachea la IP).
+  - ~~Gotcha: tras recrear `argos-rag-api`, hacer `docker restart argos-dashboard`~~ — **ya no aplica** (2026-11-11): los dos Nginx
+    resuelven el nombre en cada request (`resolver 127.0.0.11` + variable en `proxy_pass`); antes lo resolvían una sola vez al arrancar.
 - ✅ **LLM con fallback + salud de la IA + notificaciones** (2026-10-26): n8n ya **no llama a los LLM**; llama a
   `POST rag-api/internal/llm/generate`, que recorre la cadena principal (settings) → `LLM_FALLBACK_CHAIN`
   (default `gemini:gemini-flash-lite-latest,groq,openrouter`; eslabones sin key se saltean). Proveedores nuevos
@@ -123,7 +124,8 @@ Argos es una plataforma AIOps construida sobre un stack de observabilidad open-s
     **umbral 0.68** en settings (RAG 6/7 sin falsos "conocida"; n8n 65 s → 6 s). Aprendizaje OK (F4 y F7: 2ª ocurrencia
     reconocida con ≥0.968). `openrouter/free` a veces devolvía "User Safety: safe" (el router elegía un clasificador)
     → **`OPENROUTER_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free`** (8/8 OK).
-  - Prompts con el documento aprendido + contexto del stack (accionabilidad 2,5 → 4,5 en alertas aprendidas).
+  - Prompts con el documento aprendido + contexto del stack (accionabilidad 2,5 → 4,5 en alertas aprendidas). **Desde el
+    2026-11-15 ese contexto ya no está en el código**: es el campo `environment_context` de Configuración (ver "Contexto del entorno").
     10 corridas automáticas (`eval/run-auto.mjs`): propuesta en ~1,1 min, arreglo exacto 8/10. **Línea base manual de
     MTTR no medida: limitación declarada** (decisión del autor). Presentación/SPEECH: OE3 95 %, total ~93 %.
 - ✅ **Dashboard migrado a Next.js** (2026-11-10): la propuesta (Anexo II) pedía Next.js y estaba en Vite.
@@ -135,7 +137,72 @@ Argos es una plataforma AIOps construida sobre un stack de observabilidad open-s
   - **Gotchas:** `package-lock.json` está en `.gitignore` → el Dockerfile usa `npm install` (no `npm ci`);
     `next dev` usa rewrites (`DEV_API_TARGET`), el build no (export estático); `next dev` genera un
     `AGENTS.md` en `dashboard/` (ignorado en git).
-- ⏳ Sprint 6 pendiente: deploy en cloud (GCP/AWS) + memoria académica final
+- ✅ **Cierre de noviembre** (2026-11-11/12; detalle y cifras en `docs/EVALUACION_OE3.md` §6 y `docs/PRODUCT_BACKLOG.md`):
+  - **IaC (OE1):** módulo `terraform/modules/argos-node` (VPC, SG, EC2 Ubuntu 24.04 gp3 cifrado + IMDSv2, Elastic IP, 4 secretos con
+    `random_password`, cloud-init que levanta el compose raíz y deja `argos-deploy`) usado por `environments/localstack` y
+    `environments/aws` (`main/variables/outputs.tf` idénticos; cambia `providers.tf` + tfvars). `fmt`/`validate` OK y `apply`+`destroy`
+    en LocalStack 3.8 (12 recursos). **No se aplicó en AWS real** (ni se probó cloud-init en una VM real). Instancia `t3.xlarge`.
+  - **CI:** `.github/workflows/ci.yml`, 6 jobs (terraform, observability-config, compose, argos-api con 106 tests xUnit de
+    `argos-api/Argos.Tests`, membresia-api, dashboard). Solo CI, sin CD. **Aún no corrió en GitHub** (cambios sin subir).
+  - **Logs de aplicación:** Alloy descubre por el socket de Docker (`:ro`) **solo los contenedores con el label `argos.logs=true`**
+    (opt-in: `membresia-api` y `membresia-sqlserver` en `docker/apps/docker-compose.yml`; desde el 2026-11-15) → Loki con
+    `job="docker"`, `container="<nombre>"`; no toca las etiquetas `service="nginx"`. Antes recolectaba todos los `argos*` (13 streams).
+  - **Principio de diseño (2026-11-15, decisión del autor):** Argos infiere todo **a partir de Nginx** (o de la propia alerta), sin
+    conocer los contenedores del servicio. La fuente de evidencia la declara cada regla con el label `evidence`: `nginx` (las 5 de Loki +
+    las 3 de tráfico de Prometheus) o `target` (`NginxDown`, `NodeExporterDown`, `CAdvisorDown`, usa el `instance`); sin label, nada.
+    Con `nginx`, el upstream sale de `upstream_addr`/error.log y `DockerContainerDirectory` lo traduce a contenedor (IP, nombre, servicio
+    de Compose o alias). **No volver a escribir nombres de contenedores en `AlertEvidencePlanner`.**
+  - **Contexto del entorno (2026-11-15, decisión del autor):** la descripción del entorno que acompaña a los prompts (Docker Compose,
+    contenedores, puertos) salió del código (`Build Prompt`, `Build Doc Prompt`, `IncidentDocumentPrompt`) y pasó a configuración:
+    campo `environment_context` de `argos_settings`, editable en Configuración (Admin, tope 3000 caracteres → 422), expuesto a n8n por
+    `GET /internal/config` (nodo `Get Config`). Si nunca se editó (`null`), `SettingsRepository` usa `ARGOS_ENVIRONMENT_CONTEXT` del
+    despliegue (valor de ejemplo en `docker/monitoring/.env.example`); `""` = vacío a propósito. El código solo conserva la instrucción
+    genérica (`IncidentDocumentPrompt.EnvironmentGuidance`, mismo texto en n8n). Gotcha: el `.env` local no trae la variable; en el
+    stack local el contexto se cargó por `PATCH /settings` (persiste en Qdrant). `eval/run-llm-eval.mjs` lee `/internal/config` igual que n8n.
+  - **Runbooks fuera de la imagen (2026-11-15):** los 5 runbooks pasaron de `argos-api/Argos.Api/knowledge/` a
+    `docker/monitoring/knowledge/` (montados en `/app/knowledge:ro`): nombraban contenedores y tablas del servicio de ejemplo, así que
+    son contenido del despliegue, no de Argos. La imagen de la API no trae runbooks. Se quitó la contraseña `sa` del runbook
+    `nginx-5xx.md` y de los 17 incidentes de Qdrant que la habían copiado en sus pasos (iba a parar a los prompts del LLM externo).
+    Gotcha: el seed no pisa documentos existentes; un runbook ya sembrado se corrige con `PATCH /incidents/{id}`.
+  - **Evidencia de logs + IP seudonimizada:** `POST /internal/evidence` (token interno) y nodo `Get Evidence` (entre `RAG Query` y
+    `Build Prompt`, falla = continúa): ≤18 líneas de ≤200 caracteres de Loki. `LlmService` reemplaza IPv4/IPv6 por `[IP-n]` antes de
+    enviar y las restaura en la respuesta. Env: `ALERT_EVIDENCE_ENABLED`, `LLM_PSEUDONYMIZE_IPS` (ambas `true`). Seudonimización, no
+    anonimización; ahora al LLM externo **sí** sale una muestra de logs. **Diseño vigente (15/11):** ya no hay contenedores fijos; el
+    upstream sale de Nginx y `DockerContainerDirectory` lo traduce a contenedor e informa su estado ("Exited (0) ..."); la base de datos
+    no se consulta (Nginx solo conoce a la API: su causa se ve únicamente si la API la registra). Si Docker o Loki no responden, la
+    evidencia queda solo en Nginx o vacía. n8n manda los labels de la alerta (nodos `Prepare`/`Get Evidence`). Verificado: F1, F2 y F7
+    con arreglo exacto, N = 1 (`docs/EVALUACION_OE3.md` §6.2 y §6.5).
+  - **Señal por nombre en el RAG:** `POST /query` acepta `alertname`, devuelve `match_reason` (`similarity|alert_name|none`); un doc con
+    solución del mismo tipo con similitud ≥ `RAG_NAME_MATCH_MIN_SCORE` (**0.30**) cuenta como conocido. Re-evaluación 7/7.
+  - **Defecto de Nginx corregido:** guardaba la IP del upstream (resuelta al arrancar); tras `docker stop/start membresia-api` quedaba en 502.
+    Por eso los MTTR de F1/F2 de octubre miden cuándo se apaga la alerta, no cuándo vuelve el servicio.
+  - **Panel:** implementados F-02/F-03/F-04/F-05/F-06/F-10 (`POST /incidents/knowledge-base`, `DELETE /incidents/{id}`, ambos Admin).
+    **Suite E2E completa re-corrida el 15/11: 103 pruebas, 101 ok, 0 fallas, 2 omitidas** (S-06 e I-07 por falta de datos). Encontró un
+    defecto real en M-04: la latencia P50/P95/P99 de Nginx no agrupaba (una serie por combinación de etiquetas; 400 de Loki a 6 h) →
+    `by (service)` en `NginxMetricsService`. Gotcha E2E: Next.js agrega un `role=alert` propio (anunciador de rutas); filtrar por texto.
+    F-12 sigue abierto. API de ejemplo (`docker/apps/api/MembresiaAPI`) ahora registra sus errores (antes los callaba y la evidencia quedaba muda): sin esos logs, la causa en la base de datos no llega a la evidencia.
+  - **Gotchas:**
+    1. **Piso de la señal por nombre = 0.30**, no 0.50: `NginxHighResponseTime` (con runbook manual) puntuó 0.355 contra su runbook (el resumen
+       escrito a mano se parece poco al texto real) y con 0.50 se autodocumentó de más. Apoyado en dos casos (0.607 y 0.355), no calibrado.
+    2. Las pruebas manuales que provocan 5xx (parar la API, etc.) **contaminan `eval/run-auto.mjs`**: el runner descarta las alertas que
+       empezaron antes de la inyección. Esperar a que no haya alertas activas antes de correrlo.
+    3. Correr la **suite E2E completa con el stack levantado puede agotar la memoria** del equipo (caídas de navegador, "worker process exited");
+       no dar por fallidas esas pruebas: re-correr con memoria libre.
+    4. En el primer arranque, **Alloy envía logs anteriores a la retención de Loki (7 d) y Loki los rechaza** (unos 10 errores en un segundo,
+       sin repetición): es inofensivo.
+    5. **`terraform plan` nunca queda limpio contra LocalStack:** no conserva las opciones de metadatos (IMDSv2) y Terraform las vuelve a proponer.
+    6. **AMI válida para LocalStack:** `ami-785db401` (Ubuntu 16.04 del catálogo precargado de LocalStack 3.x); otros IDs dan `InvalidAMIID.NotFound`.
+       En LocalStack el `user_data` no se ejecuta (`-var deploy_local_stack=true` levanta el compose contra el Docker local).
+    7. Si no hay respuesta de proveedores LLM, el incidente queda `pendiente` y el correo avisa (evidencia RNF-01); no es un fallo del workflow.
+    8. **Botón "Generar documentación" del panel:** el incidente no guarda los labels de la alerta, así que no conoce `evidence`; usa un criterio
+       de respaldo (evidencia de Nginx si el nombre empieza con "Nginx", ninguna para el resto). Solo n8n manda los labels reales.
+    9. **Cómo se identifica un contenedor detenido:** el Nginx con resolver por request escribe `<nombre> could not be resolved` en el error.log
+       cuando el contenedor desaparece del DNS de Docker; ese nombre es lo que `DockerContainerDirectory` traduce y consulta. Si se vuelve a un
+       `upstream` con nombre fijo, se pierde esa señal (y reaparece el defecto de la IP vieja).
+   10. **Regla de alerta nueva = decidir su label `evidence`** (`nginx`, `target` o ninguno). Sin label no tiene evidencia (la API no lo infiere).
+  - **Pendientes del autor:** aplicar en AWS, estudio de MTTR con personas, subir cambios (CI) y fusionar
+    `feat/dashboard-nextjs` en `master` (master aún tiene el panel en Vite). El doc de prueba `DotnetMigrationE2E` ya se borró (15/11).
+- ⏳ Sprint 6 pendiente: aplicar `terraform/environments/aws` en una cuenta real + memoria académica final (Informe Final)
 
 ---
 
@@ -144,14 +211,16 @@ Argos es una plataforma AIOps construida sobre un stack de observabilidad open-s
 ```
 D:\DEV\argos/
 ├── docker-compose.yml                        — Compose raíz (include de 3 stacks)
+├── .github/workflows/ci.yml                  — CI (6 jobs: terraform, observability-config, compose, argos-api, membresia-api, dashboard)
 ├── docs/
-│   └── Anexoll_Acosta_Juan_Agustin.docx.md  — Propuesta académica
+│   ├── Anexoll_Acosta_Juan_Agustin_V2.docx.md — Propuesta académica
+│   ├── PRODUCT_BACKLOG.md, EVALUACION_OE3.md, FIXES_DASHBOARD.md, VALIDACION_API.md, Informe_Final_*.docx/.pdf
+├── eval/                                     — Evaluación del OE3 (scenarios.json, faults.ps1, run-llm-eval.mjs, run-auto.mjs, results/)
 ├── terraform/
-│   ├── environments/localstack/              — Infraestructura LocalStack (solo EC2 mock)
-│   │   ├── main.tf, variables.tf, outputs.tf
-│   │   ├── providers.tf
-│   │   └── scripts/get_or_create_ami.ps1
-│   └── scripts/                              — Base y provisioning (VMs cloud)
+│   ├── modules/argos-node/                   — Módulo compartido: VPC, SG, EC2 (IMDSv2, gp3 cifrado), EIP, secretos, cloud-init
+│   └── environments/
+│       ├── localstack/                       — Mismo módulo contra LocalStack (+ localstack.tf: deploy_local_stack opcional)
+│       └── aws/                              — Mismo módulo contra AWS real (sin aplicar aún)
 ├── docker/
 │   ├── monitoring/                           — Stack observabilidad + Qdrant
 │   │   ├── docker-compose.yml
@@ -159,6 +228,7 @@ D:\DEV\argos/
 │   │   ├── loki/ (config + rules)
 │   │   ├── grafana/ (dashboards provisioned)
 │   │   ├── alertmanager/ (routing config)
+│   │   ├── knowledge/ (runbooks del entorno; se montan en la API, no van en su imagen)
 │   │   └── .env.example
 │   ├── proxy/                                — Nginx + Alloy
 │   │   ├── docker-compose.yml
@@ -169,11 +239,12 @@ D:\DEV\argos/
 │       ├── db/init-db.sql                    — Esquema + SP + seed (idempotente)
 │       └── api/MembresiaAPI/ (.NET 10 Minimal)
 ├── argos-api/                                — Argos API (.NET 10), solución Argos.slnx
-│   ├── Argos.Api/ (Controllers MVC, Authentication JWT, Binding, Errors, Filters, Hosting; knowledge/)
+│   ├── Argos.Api/ (Controllers MVC, Authentication JWT, Binding, Errors, Filters, Hosting)
 │   ├── Argos.Business/ (Services: Auth/Users/Settings/Llm/Rag/Incidents/Audit/Notifications/
 │   │                    Observability/LoadTests; Security; Seeding)
 │   ├── Argos.Repository/ (repositorios Qdrant, Embeddings ONNX, Loki/Prometheus, LLM providers, k6/Docker)
 │   ├── Argos.Entities/ (entidades de dominio + Dtos/)   Argos.Common/ (config por entorno, excepciones)
+│   ├── Argos.Tests/ (xUnit, 106 pruebas; no entra en la imagen)
 │   └── Dockerfile + README.md
 ├── dashboard/                                — Sprint 5: panel propio (Next.js App Router + TS, export estático)
 │   ├── src/ (app/: una ruta por vista · app-shell/: estado + layout · components/ · routes.ts · api.ts)
@@ -231,18 +302,25 @@ docker compose down -v        # bajar + borrar volúmenes
 
 ### 1. Trabajar con Terraform
 
-**Archivo clave:** `terraform/environments/localstack/main.tf`
+**Archivo clave:** `terraform/modules/argos-node/` (la infraestructura); los entornos `terraform/environments/localstack` y
+`terraform/environments/aws` solo lo invocan (`main.tf`/`variables.tf`/`outputs.tf` idénticos; difieren `providers.tf` y el `terraform.tfvars`,
+que se copia de `terraform.tfvars.example` y no se versiona).
 
 Cambios típicos:
-- Modificar `instance_type` en `variables.tf` (t3.medium/t3.large)
-- Cambiar proyectos Docker que se levantan en `main.tf` (orden importa: monitoring → apps → proxy)
-- Para desplegar en GCP (Sprint 6): copiar scaffold de `environments/gcp/` y llenar recursos reales
+- Dimensionamiento: `instance_type` (default `t3.xlarge`: 4 vCPU/16 GiB; con 8 GiB no alcanza), `root_volume_size_gb`
+- Acceso: `admin_cidr_blocks` (obligatoria; panel 3001, Grafana 3000 y SSH) y `ssh_public_key`; solo 80 y 8443 quedan abiertos a Internet
+- Qué se despliega: `repo_url`/`repo_ref` y el mapa `argos_env` (se escribe como `.env` en la VM)
+- No hay scaffold de GCP: la nube elegida es AWS. LocalStack: `ami_id = "ami-785db401"`; su instancia es simulada (el `user_data` no corre);
+  `-var deploy_local_stack=true` levanta el compose contra el Docker local
 
-**Comando:**
+**Comandos:**
 ```powershell
-terraform plan      # Ver cambios sin aplicar
-terraform apply     # Aplicar
-terraform destroy   # Destruir
+cd terraform/environments/localstack   # o environments/aws (credenciales por AWS_PROFILE / AWS_ACCESS_KEY_ID)
+terraform init
+terraform plan      # contra LocalStack nunca queda limpio (opciones de metadatos de IMDSv2): es del simulador
+terraform apply     # aws: tiene costo; en la VM el arranque lo hace cloud-init y deja el comando argos-deploy
+terraform destroy
+terraform fmt -check -recursive ; terraform validate   # lo mismo que corre el CI
 ```
 
 ### 2. Trabajar con Docker Compose
@@ -273,8 +351,7 @@ Análogo para `proxy` y `apps`.
 
 **Alertmanager routing:** `docker/monitoring/alertmanager/alertmanager.yml`
 - Routes por severity / alertname
-- Receivers: email, webhook (n8n en Sprint 4)
-- **Nota:** webhook-n8n removido en migración, se reintroduce en Sprint 4
+- Receivers: email (`email-default`/`email-critical`, con placeholders SMTP: **no** usan el pool) y `webhook-n8n` (el que cuenta; reintroducido en el Sprint 4)
 
 ### 4. Configurar Grafana
 
@@ -293,7 +370,10 @@ Análogo para `proxy` y `apps`.
 ```powershell
 terraform apply -out=plan.tfplan  # Guardar plan
 terraform apply plan.tfplan       # Verbose output
+# En la VM de AWS: sudo cat /var/log/cloud-init-output.log ; argos-deploy para volver a desplegar
 ```
+
+**Logs de aplicación en Loki** (desde noviembre): `{job="docker", container="membresia-api"}` y `membresia-sqlserver` (solo contenedores con label `argos.logs=true`; los de la plataforma se miran con `docker logs`)
 
 **Docker logs:**
 ```powershell
@@ -358,8 +438,10 @@ docker inspect network argos-net           # Ver contenedores en red
     `--summary-export` en el volumen (de root), si no → `permission denied`.
   - **Gotcha 2:** en el JSON de `--summary-export`, las métricas Rate (`http_req_failed`, `checks`)
     guardan la fracción en la clave `value` (no `rate`); Trend usa `p(95)`/`avg`, Counter `count`/`rate`.
-- ⏳ Desplegar en AWS/GCP adaptando provider de Terraform
-- ⏳ Medir MTTR, latencia, error rate + memoria académica final
+- ✅ Evaluación del OE3 cerrada (2026-10-28), línea base manual de MTTR no medida (limitación declarada)
+- ✅ IaC portable (módulo `argos-node` + `localstack`/`aws`), CI y logs de aplicación (cierre de noviembre)
+- ⏳ **Aplicar `terraform/environments/aws` en una cuenta real** y verificar cloud-init en la VM (no hecho)
+- ⏳ Memoria académica final (Informe Final) y, si se quiere, estudio de MTTR con personas
 
 ---
 
@@ -443,3 +525,8 @@ terraform state rm resource-name   # Remover recurso de state
 | 2026-10-19 | Claude Code | **Argos API en .NET 10** (`argos-api/Argos.slnx`): capas `Argos.Entities` (entidades + DTOs), `Argos.Repository` (repositorios Qdrant con `QdrantRepository<T>`, embeddings ONNX, Loki/Prometheus, `ILlmProvider` Gemini/Anthropic, k6 vía Docker.DotNet), `Argos.Business` (servicios con interfaz), `Argos.Api` (controllers MVC + auth JWT + binder de DTOs) y `Argos.Common`; DI con módulos Autofac. Pasa a ser la **única API**: se eliminó la implementación Python (`rag/`, servicio `rag-api-python`, volumen `fastembed_cache`). Validado: endpoints vía `:3001/api`, n8n, LLM doc, k6 start/409/stop. |
 | 2026-10-26 | Claude Code | **LLM con fallback + salud + notificaciones**: un `CAdvisorDown` real murió en n8n por 503/timeout de `gemini-flash-latest` sin dejar incidente ni aviso. Ahora n8n llama a `POST /internal/llm/generate` (cadena principal → `LLM_FALLBACK_CHAIN`), proveedores `GroqProvider`/`OpenRouterProvider` (`OpenAiCompatibleProvider`), `LlmHealthTracker` pasivo con cooldown, `GET /llm/health` + `POST /llm/health/check`, notificaciones con `kind` (`incident`/`llm_health`/`pipeline_error`) + `read-all`; header con badge de IA real y campana con navegación al incidente; tarjeta "Estado de los modelos IA" en Configuración. Workflow: sin `Route LLM`/`Route Doc LLM`, nodos LLM con `onError=continue`, el incidente se persiste aunque falle la IA. n8n ya no recibe keys de LLM. Validado: flash-latest timeout → flash-lite responde (`fallback_used=true`). |
 | 2026-11-10 | Claude Code | **Dashboard migrado de Vite a Next.js** (lo pedía la propuesta, Anexo II): Next.js 16 App Router + React 19, export estático servido por el mismo nginx, una ruta por vista (`src/app/`, `src/routes.ts`), estado en `src/app-shell/AppProvider.tsx`, Sidebar con `<Link>`, 404 propio, `/usuarios` solo Admin. E2E `routing.spec.ts` (deep links, F5, historial, login con deep link, `?estado=`, 404) + suite adaptada (k6: 4 escenarios). Resultado 80 ✓ / 4 ✗ (las 4 fallan igual con Vite). Docs, presentación e Informe Final actualizados. |
+| 2026-11-12 | Claude Code | **Cierre de noviembre** (11 y 12/11): Terraform rehecho como módulo `argos-node` + entornos `localstack`/`aws` (verificado contra LocalStack 3.8, **sin aplicar en AWS**), CI `.github/workflows/ci.yml` (6 jobs, 82 tests xUnit en `Argos.Tests`, aún sin correr en GitHub), Alloy con logs de contenedores (`job="docker"`), evidencia de logs en el prompt (`/internal/evidence`, nodo `Get Evidence`) con seudonimización de IP, señal por nombre de alerta en el RAG (piso 0.30; re-evaluación 7/7), fix de Nginx (resuelve por request: ya no hace falta reiniciar `argos-dashboard`), panel F-02/F-03/F-04/F-05/F-06/F-10 implementados (**suite E2E completa sin re-correr por falta de memoria**; F-12 abierto), API de ejemplo registra sus errores. Docs al día: EVALUACION_OE3 §6, FIXES_DASHBOARD, PRODUCT_BACKLOG, README de `eval/` y `argos-api/`. |
+| 2026-11-15 | Claude Code | **Evidencia inferida desde Nginx** (decisión del autor: la API de membresías es un servicio independiente y Argos no debe conocer sus contenedores): label `evidence` (`nginx`/`target`) en las reglas de Prometheus y Loki; el upstream sale de `upstream_addr` y del error.log y `DockerContainerDirectory` lo traduce a contenedor (estado vía Docker) antes de pedir sus logs a Loki; se eliminaron los nombres fijos de `AlertEvidencePlanner` y la consulta a la base. Alloy pasa a **opt-in** con el label `argos.logs=true` (13 → 2 flujos en Loki). n8n envía los labels; el botón del panel usa criterio de respaldo. `eval/scenarios.json` con `labels`. 94 pruebas unitarias en verde. Corridas F1/F2/F7 del 15/11 con arreglo exacto en las tres (N = 1). Docs: EVALUACION_OE3 §6.2 y §6.5, PRODUCT_BACKLOG, `eval/README.md`. |
+| 2026-11-15 | Claude Code | **Contexto del entorno a configuración** (decisión del autor: los nombres de contenedores escritos en los prompts eran otra forma de que Argos conociera el servicio): campo `environment_context` en `argos_settings`, editable en Configuración (solo Admin, tope 3000, 422 si se excede), que n8n recibe en `Get Config`; valor inicial `ARGOS_ENVIRONMENT_CONTEXT` (el `.env.example` trae la descripción anterior); vacío = prompt genérico; el código conserva solo una instrucción genérica (n8n, `LlmService`, `IncidentDocumentPrompt`). 102 pruebas unitarias en verde. Corridas F1/F2/F7: F1 y F7 con arreglo exacto, F2 parcial (N = 1; la diferencia con la corrida previa no se atribuye al cambio). El campo no se vio en un navegador. Docs: EVALUACION_OE3 §6.7, PRODUCT_BACKLOG, FUNCIONALIDADES_DASHBOARD. |
+| 2026-11-15 | Claude Code | **Runbooks fuera de la imagen de Argos**: `argos-api/Argos.Api/knowledge/` → `docker/monitoring/knowledge/` (volumen `:ro` sobre `/app/knowledge`); el `.csproj` ya no los copia; `DemoIncidentCatalog` sin nombres del servicio de ejemplo. Contraseña `sa` eliminada del runbook `nginx-5xx.md` y de 17 incidentes de Qdrant (vía `PATCH`). Borrado el doc `DotnetMigrationE2E`. 106 pruebas en verde; RAG 7/7 conocidas. Suite E2E completa: 101/103 ok, 2 omitidas; corregido M-04 (latencia de Nginx agrupada `by (service)`) y +3 pruebas de C-08. |
+| 2026-11-15 | Claude Code | **Cierre de documentación**: Informe Final (87 páginas) con los runbooks fuera de la imagen, la contraseña en la base de conocimiento, la suite E2E real (101/103), el defecto de latencia M-04 y los desvíos respecto de la propuesta (LocalStack comunitario, nodo único, CI sin CD); presentación, SPEECH y `ARQUITECTURA.html` al día. Tercera tanda F1/F2/F7 ×3 **interrumpida por falta de memoria** en la segunda corrida (F1 exacto, F2 no): acumulado del 15/11 F1 3/3, F7 2/2, F2 1/3 (`EVALUACION_OE3.md` §6.8). Rama `feat/dashboard-nextjs` commiteada pero **sin subir** (push pendiente del autor). |
