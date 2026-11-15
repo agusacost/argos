@@ -1,3 +1,6 @@
+# Label "evidence": de dónde saca Argos la evidencia de logs para el análisis.
+#   nginx  = logs de Nginx y, a partir de ellos, el upstream que Nginx reporta en los errores.
+#   target = el host del label "instance" (el componente que dejó de responder).
 groups:
   - name: nginx-http
     interval: 1m
@@ -10,6 +13,7 @@ groups:
         for: 2m
         labels:
           severity: warning
+          evidence: nginx
         annotations:
           summary: "Tasa de errores 5xx > 5%"
           description: "El {{ $value | humanize }}% de los requests en los últimos 5 minutos retornaron status 5xx."
@@ -22,6 +26,7 @@ groups:
         for: 1m
         labels:
           severity: critical
+          evidence: nginx
         annotations:
           summary: "Tasa de errores 5xx > 20% — servicio degradado"
           description: "El {{ $value | humanize }}% de los requests retornan 5xx. Revisar aplicación y upstream."
@@ -35,6 +40,7 @@ groups:
         for: 3m
         labels:
           severity: warning
+          evidence: nginx
         annotations:
           summary: "Latencia P95 del upstream > 2s"
           description: "El P95 de upstream_response_time supera los 2 segundos (actual: {{ $value | humanize }}s)."
@@ -47,6 +53,7 @@ groups:
         for: 2m
         labels:
           severity: warning
+          evidence: nginx
         annotations:
           summary: "IP generando más de 200 req/min"
           description: "La IP {{ $labels.remote_addr }} generó {{ $value | humanize }} req/min. Posible scraping o ataque."
@@ -57,6 +64,7 @@ groups:
         for: 2m
         labels:
           severity: warning
+          evidence: nginx
         annotations:
           summary: "Spike en error.log de Nginx"
           description: "Más de 1 error/s en el error.log de Nginx en los últimos 5 minutos."

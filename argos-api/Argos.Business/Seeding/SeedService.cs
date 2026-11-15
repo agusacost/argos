@@ -28,7 +28,9 @@ public sealed class SeedService(
         return count;
     }
 
-    // Solo los que faltan: re-guardarlos en cada arranque les cambiaba la fecha y pisaba lo editado.
+    // Solo los que faltan: re-guardarlos en cada arranque les cambiaba la fecha y pisaba lo editado. Lo único que se
+    // completa en uno existente es el documento, si está vacío (F-04: instalaciones sembradas antes de leer el cuerpo
+    // del runbook). Idempotente: con el documento ya cargado no hace nada.
     private async Task<int> SaveAllAsync(IEnumerable<Incident> items, string kind)
     {
         var count = 0;
@@ -37,7 +39,18 @@ public sealed class SeedService(
             try
             {
                 incident.Fecha ??= clock.UtcNowNaive();
-                if (await incidents.SaveIfAbsentAsync(incident)) count++;
+                var existing = await incidents.GetExistingAsync(incident);
+                if (existing is null)
+                {
+                    await incidents.SaveAsync(incident);
+                    count++;
+                }
+                else if (string.IsNullOrWhiteSpace(existing.Documento) && !string.IsNullOrWhiteSpace(incident.Documento))
+                {
+                    existing.Documento = incident.Documento;
+                    await incidents.UpdateAsync(existing);
+                    log.LogInformation("[seed] {Kind} '{Tipo}': documento completado.", kind, existing.TipoAlerta);
+                }
             }
             catch (Exception ex)
             {

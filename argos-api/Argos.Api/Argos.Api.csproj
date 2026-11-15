@@ -11,9 +11,4 @@
     <ProjectReference Include="..\Argos.Business\Argos.Business.csproj" />
   </ItemGroup>
 
-  <!-- Runbooks de la base de conocimiento (seed al arrancar) -->
-  <ItemGroup>
-    <Content Include="knowledge\*.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>

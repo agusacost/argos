@@ -6,7 +6,11 @@ using YamlDotNet.Serialization;
 
 namespace Argos.Repository.Knowledge;
 
-/// <summary>Runbooks de <c>knowledge/*.md</c> con front-matter YAML (tipo_alerta, resumen, pasos, estado, fuente).</summary>
+/// <summary>
+/// Runbooks de <c>knowledge/*.md</c> con front-matter YAML (tipo_alerta, resumen, pasos, estado, fuente). El cuerpo
+/// Markdown después del front-matter (Contexto, Causas, …) va al campo <c>documento</c> (F-04: antes se descartaba y el
+/// panel no mostraba la documentación de los runbooks manuales).
+/// </summary>
 public sealed class MarkdownKnowledgeSource(ISeedConfig config, ILogger<MarkdownKnowledgeSource> log) : IKnowledgeSource
 {
     private const string FrontMatterDelimiter = "---";
@@ -25,10 +29,10 @@ public sealed class MarkdownKnowledgeSource(ISeedConfig config, ILogger<Markdown
         {
             try
             {
-                var text = File.ReadAllText(path, Encoding.UTF8);
-                if (!text.StartsWith(FrontMatterDelimiter, StringComparison.Ordinal)) continue;
-                var data = yaml.Deserialize<Dictionary<string, object?>>(text.Split(FrontMatterDelimiter, 3)[1]);
-                runbooks.Add(ToIncident(data));
+                if (SplitFrontMatter(File.ReadAllText(path, Encoding.UTF8)) is not var (frontMatter, body)) continue;
+                var incident = ToIncident(yaml.Deserialize<Dictionary<string, object?>>(frontMatter));
+                incident.Documento = body.Length > 0 ? body : null;
+                runbooks.Add(incident);
             }
             catch (Exception ex)
             {
@@ -36,6 +40,16 @@ public sealed class MarkdownKnowledgeSource(ISeedConfig config, ILogger<Markdown
             }
         }
         return runbooks;
+    }
+
+    /// <summary>(front-matter YAML, cuerpo Markdown sin espacios sobrantes), o null si el archivo no empieza con '---'.</summary>
+    public static (string FrontMatter, string Body)? SplitFrontMatter(string text)
+    {
+        text = text.TrimStart('﻿');
+        if (!text.StartsWith(FrontMatterDelimiter, StringComparison.Ordinal)) return null;
+        var parts = text.Split(FrontMatterDelimiter, 3);
+        if (parts.Length < 3) return null;
+        return (parts[1], parts[2].Trim());
     }
 
     private static Incident ToIncident(Dictionary<string, object?> data) => new()

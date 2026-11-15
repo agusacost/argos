@@ -85,7 +85,6 @@ services:
 
   # Argos API (.NET 10): RAG de incidentes, auth, configuración, observabilidad, auto-doc con LLM y k6.
   # Responde como `rag-api:8000` (alias de red) para el dashboard (nginx /api) y n8n.
-  # Tras recrear este contenedor: `docker restart argos-dashboard` (su nginx cachea la IP de rag-api).
   argos-api:
     build: ../../argos-api
     image: argos-api:dev
@@ -110,6 +109,14 @@ services:
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-nvidia/nemotron-3-ultra-550b-a55b:free}
       - LLM_FALLBACK_CHAIN=${LLM_FALLBACK_CHAIN:-gemini:gemini-flash-lite-latest,groq,openrouter}
       - LLM_COOLDOWN_SECONDS=${LLM_COOLDOWN_SECONDS:-300}
+      # Privacidad (Ley 25.326, art. 12): las IP se reemplazan por [IP-n] antes de llamar al LLM y se restauran
+      - LLM_PSEUDONYMIZE_IPS=${LLM_PSEUDONYMIZE_IPS:-true}
+      # Evidencia acotada de logs de Loki (Nginx + contenedores) en el prompt del análisis y de la documentación
+      - ALERT_EVIDENCE_ENABLED=${ALERT_EVIDENCE_ENABLED:-true}
+      # RAG: un documento del MISMO tipo de alerta cuenta como conocido si su similitud supera este piso (1 = apagado)
+      - RAG_NAME_MATCH_MIN_SCORE=${RAG_NAME_MATCH_MIN_SCORE:-0.30}
+      # Contexto del entorno para los prompts (valor inicial; se edita en Configuración). Lo provee el despliegue.
+      - ARGOS_ENVIRONMENT_CONTEXT=${ARGOS_ENVIRONMENT_CONTEXT:-}
       - ARGOS_AUTO_SEED=${ARGOS_AUTO_SEED:-true}
       - ARGOS_SEED_DEMO=${ARGOS_SEED_DEMO:-false}
       # Secreto (header X-Argos-Token) de los endpoints internos que usa n8n: /query, /upsert,
@@ -127,6 +134,8 @@ services:
     volumes:
       # Socket Docker: permite lanzar el contenedor k6 (solo rol Admin dispara)
       - /var/run/docker.sock:/var/run/docker.sock
+      # Runbooks del entorno (base de conocimiento inicial). Son del despliegue, no de la imagen: la API no trae ninguno.
+      - ./knowledge:/app/knowledge:ro
       # Fuente canónica de los scripts (solo lectura) para visualizar código + copiar al volumen
       - ../../k6/tests:/app/k6_tests:ro
       # Datasets de los scripts (payloads.json del escenario de ataque) → k6 los ve en /data

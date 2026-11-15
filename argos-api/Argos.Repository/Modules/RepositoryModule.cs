@@ -36,6 +36,7 @@ public sealed class RepositoryModule : Module
         builder.RegisterType<LokiClient>().As<ILokiClient>().SingleInstance();
         builder.RegisterType<PrometheusClient>().As<IPrometheusClient>().SingleInstance();
         builder.RegisterType<HttpProbe>().As<IHttpProbe>().SingleInstance();
+        builder.RegisterType<DockerContainerDirectory>().As<IContainerDirectory>().SingleInstance();
 
         // LLM: se resuelven todos juntos como IEnumerable<ILlmProvider>
         builder.RegisterType<GeminiProvider>().As<ILlmProvider>().SingleInstance();

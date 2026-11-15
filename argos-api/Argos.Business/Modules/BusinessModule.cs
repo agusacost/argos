@@ -2,11 +2,13 @@ using Argos.Business.Security;
 using Argos.Business.Seeding;
 using Argos.Business.Services.Audit;
 using Argos.Business.Services.Auth;
+using Argos.Business.Services.Evidence;
 using Argos.Business.Services.Incidents;
 using Argos.Business.Services.Llm;
 using Argos.Business.Services.LoadTests;
 using Argos.Business.Services.Notifications;
 using Argos.Business.Services.Observability;
+using Argos.Business.Services.Privacy;
 using Argos.Business.Services.Rag;
 using Argos.Business.Services.Settings;
 using Argos.Business.Services.Users;
@@ -27,10 +29,13 @@ public sealed class BusinessModule : Module
         builder.RegisterType<AuthService>().As<IAuthService>().SingleInstance();
         builder.RegisterType<UserService>().As<IUserService>().SingleInstance();
         builder.RegisterType<LlmHealthTracker>().As<ILlmHealthTracker>().SingleInstance();
+        builder.RegisterType<IpPseudonymizer>().As<IIpPseudonymizer>().SingleInstance();
         builder.RegisterType<LlmService>().As<ILlmService>().SingleInstance();
         builder.RegisterType<PipelineLlmService>().As<IPipelineLlmService>().SingleInstance();
         builder.RegisterType<SettingsValidator>().As<ISettingsValidator>().SingleInstance();
         builder.RegisterType<SettingsService>().As<ISettingsService>().SingleInstance();
+        builder.RegisterType<KnowledgeClassifier>().As<IKnowledgeClassifier>().SingleInstance();
+        builder.RegisterType<KnowledgeMatcher>().As<IKnowledgeMatcher>().SingleInstance();
         builder.RegisterType<RagService>().As<IRagService>().SingleInstance();
         builder.RegisterType<IncidentMetricsCalculator>().As<IIncidentMetricsCalculator>().SingleInstance();
         builder.RegisterType<IncidentService>().As<IIncidentService>().SingleInstance();
@@ -41,6 +46,10 @@ public sealed class BusinessModule : Module
         builder.RegisterType<IncidentObservabilityService>().As<IIncidentObservabilityService>().SingleInstance();
         builder.RegisterType<PlatformHealthService>().As<IPlatformHealthService>().SingleInstance();
         builder.RegisterType<NginxMetricsService>().As<INginxMetricsService>().SingleInstance();
+        builder.RegisterType<AlertEvidencePlanner>().As<IAlertEvidencePlanner>().SingleInstance();
+        builder.RegisterType<AlertEvidenceFormatter>().As<IAlertEvidenceFormatter>().SingleInstance();
+        builder.RegisterType<NginxUpstreamExtractor>().As<INginxUpstreamExtractor>().SingleInstance();
+        builder.RegisterType<AlertEvidenceService>().As<IAlertEvidenceService>().SingleInstance();
         builder.RegisterType<LoadTestScenarioCatalog>().As<ILoadTestScenarioCatalog>().SingleInstance();
         builder.RegisterType<LoadTestService>().As<ILoadTestService>().SingleInstance();
 

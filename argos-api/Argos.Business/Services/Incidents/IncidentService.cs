@@ -1,4 +1,5 @@
 using Argos.Business.Services.Audit;
+using Argos.Business.Services.Evidence;
 using Argos.Business.Services.Llm;
 using Argos.Business.Services.Notifications;
 using Argos.Business.Services.Observability;
@@ -18,12 +19,14 @@ public sealed class IncidentService(
     INotificationService notifications,
     ILlmService llm,
     IIncidentObservabilityService observability,
+    IAlertEvidenceService evidence,
     IIncidentMetricsCalculator metrics,
     IClock clock,
     ILogger<IncidentService> log) : IIncidentService
 {
     private const string NotFoundDetail = "Incidente no encontrado";
     private const string SystemUser = "Sistema";
+    private const string ManualSource = "manual";
 
     public async Task<PagedResult<IncidentSummary>> ListAsync(IncidentFilter filter)
     {
@@ -55,10 +58,43 @@ public sealed class IncidentService(
         return incident;
     }
 
+    public async Task<Incident> CreateKnowledgeEntryAsync(KnowledgeEntryRequest request, CurrentUser currentUser)
+    {
+        var incident = new Incident
+        {
+            TipoAlerta = request.TipoAlerta!.Trim(),
+            Resumen = request.Resumen!.Trim(),
+            Pasos = [.. request.CleanPasos],
+            Documento = request.CleanDocumento,
+            Severity = request.Severity?.Trim().ToLowerInvariant(),
+            Fecha = clock.UtcNowNaive(),
+            Estado = IncidentStates.DocumentadoPreviamente,
+            Fuente = ManualSource,
+        };
+        await incidents.EnsureCollectionAsync();
+        // Mismo tipo + resumen = mismo id: guardarlo pisaría el runbook existente sin aviso.
+        if (await incidents.GetExistingAsync(incident) is not null)
+            throw new ConflictException("Ya existe un documento con ese tipo de alerta y resumen");
+        var saved = await incidents.SaveAsync(incident);
+        await audit.RecordAsync(saved.Id!, ActorOf(currentUser), "Documento de la base de conocimiento creado manualmente");
+        return saved;
+    }
+
+    public async Task DeleteAsync(string incidentId, CurrentUser currentUser)
+    {
+        var incident = await GetAsync(incidentId);
+        if (!await incidents.DeleteAsync(incidentId)) throw new NotFoundException(NotFoundDetail);
+        await audit.RecordAsync(incidentId, ActorOf(currentUser),
+            $"Incidente eliminado ({incident.TipoAlerta}, estado '{incident.Estado}')");
+    }
+
     public async Task<Incident> GenerateDocumentationAsync(string incidentId, CurrentUser currentUser)
     {
         var incident = await GetAsync(incidentId);
-        var generation = await llm.GenerateIncidentDocumentAsync(await settings.GetAsync(), incident);
+        // Misma evidencia de logs que usa n8n, en la ventana del incidente (vacía si Loki no responde).
+        var logs = await evidence.CollectAsync(incident.TipoAlerta, null, IsoDateTime.Parse(incident.ReferenceDate),
+            IsoDateTime.Parse(incident.ResolvedAt));
+        var generation = await llm.GenerateIncidentDocumentAsync(await settings.GetAsync(), incident, logs.Text);
 
         // Se relee: la llamada al LLM tarda y el incidente pudo cambiar mientras tanto.
         var updated = await incidents.GetByIdAsync(incidentId)
@@ -66,7 +102,7 @@ public sealed class IncidentService(
         updated.ApplyChanges(estado: IncidentStates.AutoDocumentado, resolvedAt: clock.UtcNowNaive(), documento: generation.Text);
         await incidents.UpdateAsync(updated);
 
-        await audit.RecordAsync(incidentId, string.IsNullOrEmpty(currentUser.Email) ? SystemUser : currentUser.Email,
+        await audit.RecordAsync(incidentId, ActorOf(currentUser),
             $"Documentación generada con LLM ({generation.Provider}/{generation.Model}) y aprobada");
         return updated;
     }
@@ -76,17 +112,12 @@ public sealed class IncidentService(
     public async Task<IncidentObservability> GetObservabilityAsync(string incidentId) =>
         await observability.GetAsync(await GetAsync(incidentId));
 
+    private static string ActorOf(CurrentUser user) => string.IsNullOrEmpty(user.Email) ? SystemUser : user.Email;
+
     /// <summary>Filtros de Qdrant + búsqueda de texto + orden (más recientes primero) + paginado.</summary>
     private async Task<PagedResult<IncidentSummary>> QueryAsync(IncidentFilter filter)
     {
-        IEnumerable<Incident> items = await incidents.FindAsync(filter);
-        if (!string.IsNullOrEmpty(filter.Search))
-        {
-            var needle = filter.Search.ToLowerInvariant();
-            items = items.Where(i =>
-                i.Resumen.ToLowerInvariant().Contains(needle, StringComparison.Ordinal) ||
-                i.TipoAlerta.ToLowerInvariant().Contains(needle, StringComparison.Ordinal));
-        }
+        var items = (await incidents.FindAsync(filter)).Where(filter.MatchesText);
         var sorted = items.OrderByDescending(i => i.ReferenceDate ?? "", StringComparer.Ordinal).ToList();
         var start = Math.Max(filter.Page - 1, 0) * filter.Size;
         var data = filter.Size <= 0 || start >= sorted.Count

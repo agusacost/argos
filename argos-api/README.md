@@ -12,14 +12,13 @@ argos-api/
 ├── Directory.Build.props       — net10.0, nullable, warnings como errores (común a todos los proyectos)
 ├── Argos.Api/                  — Controllers: capa HTTP (ASP.NET Core MVC)
 │   ├── Controllers/            — Health, Rag, Internal, Auth, Users, Settings, Incidents, Observability,
-│   │                             Notifications, LoadTests (32 endpoints, rutas por atributo)
+│   │                             Notifications, LoadTests (35 endpoints, rutas por atributo)
 │   ├── Authentication/         — handler Bearer JWT (401/403 con {"detail"})
 │   ├── Binding/                — lectura y validación de bodies (IRequestDto → 422 / 400)
 │   ├── Errors/                 — middleware de errores {"detail"}, mapeo excepción → status, 404/405
 │   ├── Filters/                — token interno de n8n, parámetros inválidos → 422
 │   ├── Hosting/                — inicialización al arrancar, modo `healthcheck`
-│   ├── Modules/ApiModule.cs    — módulo Autofac de la capa
-│   └── knowledge/              — runbooks que se siembran al arrancar
+│   └── Modules/ApiModule.cs    — módulo Autofac de la capa
 ├── Argos.Business/             — Business: reglas de negocio (interfaz + implementación por servicio)
 │   ├── Services/               — Auth, Users, Settings, Llm, Rag, Incidents, Audit, Notifications,
 │   │                             Observability, LoadTests
@@ -39,6 +38,7 @@ argos-api/
 ├── Argos.Entities/             — Entities: entidades de dominio (Incident, User, AppSettings, …) y Dtos/
 ├── Argos.Common/               — transversal: configuración por entorno (interfaces por área),
 │                                 excepciones, reloj, ids uuid5, formato JSON, CommonModule
+├── Argos.Tests/                — pruebas unitarias xUnit de la lógica pura (dotnet test Argos.slnx)
 └── Dockerfile                  — multi-stage; descarga el modelo ONNX con checksum
 ```
 
@@ -61,13 +61,48 @@ descarga en el build de la imagen (Dockerfile, con checksum) y se carga en el pr
   mismo incidente lo actualiza en vez de duplicarlo.
 - Contraseñas bcrypt `$2b$` (costo 12); sesiones JWT HS256 (`sub/email/role/exp`, 12 h).
 - Qdrant se usa por REST (6333) con JSON crudo para preservar los payloads.
+- Runbooks: **la imagen no trae ninguno**. Son del despliegue: `docker/monitoring/knowledge/*.md` se monta en
+  `/app/knowledge` (`KNOWLEDGE_DIR`); si la carpeta no existe, no se siembra nada. El front-matter va a `tipo_alerta/resumen/pasos` y el cuerpo Markdown a `documento`.
+  Al arrancar, un runbook ya sembrado con `documento` vacío se completa (idempotente; no toca nada más).
+
+## Capa inteligente
+
+- **Clasificación conocida/nueva** (`POST /query`, `Rag/KnowledgeClassifier`): conocida si un documento con
+  conocimiento supera el umbral (`match_reason=similarity`) o, si no, si hay un documento con solución del mismo
+  `tipo_alerta` (campo opcional `alertname` del body) con similitud ≥ `RAG_NAME_MATCH_MIN_SCORE` (default 0.30;
+  `match_reason=alert_name`). La misma regla la usa `POST /internal/incidents/occurrence` (`Rag/KnowledgeMatcher`).
+- **Evidencia de logs** (`POST /internal/evidence`, `Evidence/*`): para la ventana de la alerta (startsAt − 10 min →
+  ahora, máx. +5 min). La fuente la declara la regla con el label `evidence` (n8n manda los `labels` de la alerta):
+  - `evidence: nginx`: distribución status/upstream_status y error.log de Nginx; del `upstream_addr` de las respuestas
+    5xx y del error.log (`upstream: "http://…"`, `… could not be resolved`) sale el upstream que Nginx reporta
+    (`NginxUpstreamExtractor`), Docker lo traduce a un contenedor (`DockerContainerDirectory`: IP, nombre, servicio de
+    Compose o alias) y se agregan sus últimas líneas (`{job="docker", container="…"}`) y su estado.
+  - `evidence: target`: el host del label `instance` (por ejemplo `node-exporter:9100`), traducido igual.
+  - sin label: sin evidencia. Sin `labels` (botón "Generar documentación"): Nginx para las alertas `Nginx*`.
+
+  **Argos no conoce los contenedores del servicio**: no hay nombres escritos en el código. La descripción del entorno
+  que va en los prompts (cómo se opera, contenedores, puertos) es configuración: `environment_context` en
+  `GET/PATCH /settings` (tope 3000 caracteres) y en `GET /internal/config` para n8n; si nunca se editó, se usa
+  `ARGOS_ENVIRONMENT_CONTEXT`. El código solo agrega una instrucción genérica (`IncidentDocumentPrompt.EnvironmentGuidance`). Tope de 18 líneas de 200
+  caracteres; un contenedor sin líneas aparece con su estado en una sola línea. Si Loki o Docker no responden, la
+  evidencia queda vacía o solo con Nginx. `ALERT_EVIDENCE_ENABLED` (default true), `DOCKER_HOST`.
+- **Privacidad** (`Privacy/IpPseudonymizationSession`): toda generación (`ILlmService.GenerateAsync/GenerateWithAsync`)
+  reemplaza las IP (IPv4/IPv6) por `[IP-n]` antes de llamar al proveedor y las restaura en la respuesta
+  (`pseudonymized_ips` en la respuesta de `/internal/llm/generate`). `LLM_PSEUDONYMIZE_IPS` (default true).
+
+## Pruebas
+
+`dotnet test Argos.slnx` corre `Argos.Tests` (xUnit + Moq, sin Qdrant/Loki/LLM): seudonimización de IP, regla de
+clasificación, evidencia, filtros, validación proveedor/modelo, alta manual de runbooks y seed. El Dockerfile copia
+los proyectos por nombre: el de pruebas no entra en la imagen.
 
 ## Correr
 
 ```powershell
 docker compose -p argos-platform up -d --build argos-api   # desde la raíz del repo
-docker restart argos-dashboard                             # su nginx cachea la IP de rag-api
 ```
+
+No hace falta reiniciar `argos-dashboard` al recrear la API: su nginx resuelve `rag-api` por el DNS de Docker en cada request.
 
 Para trabajar en el código: abrir `Argos.slnx` (`dotnet build Argos.slnx`).
 Local (fuera de Docker) necesita el modelo en `EMBEDDING_MODEL_DIR` (`model_optimized.onnx` +

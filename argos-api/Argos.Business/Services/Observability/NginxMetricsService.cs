@@ -68,7 +68,13 @@ public sealed class NginxMetricsService(ILokiClient loki, IClock clock, ILogger<
     private static string StatusQuery(string statusClass) =>
         "sum(rate({service=\"nginx\", log_type=\"access\", status=~\"" + statusClass + "\"}[" + RateWindow + "]))";
 
-    private static string QuantileQuery(string quantile) => $"quantile_over_time({quantile}, {LatencyStream} [{RateWindow}])";
+    /// <summary>
+    /// Agrupa por <c>service</c>: sin agrupar, <c>| json</c> convierte cada campo del log en etiqueta y Loki devuelve una
+    /// serie por combinación (una por request, en la práctica). El panel tomaba la primera, y con más de 500 series
+    /// (rango de 6 h con tráfico) Loki respondía 400 y la latencia quedaba vacía.
+    /// </summary>
+    public static string QuantileQuery(string quantile) =>
+        $"quantile_over_time({quantile}, {LatencyStream} [{RateWindow}]) by (service)";
 
     /// <summary>Valores de la query sobre la grilla (tolerando un step de desfase); sin dato → <paramref name="fallback"/>.</summary>
     private async Task<IReadOnlyList<double?>> SeriesAsync(string query, IReadOnlyList<long> grid,

@@ -19,8 +19,8 @@ public sealed class DemoIncidentCatalog(IClock clock) : IDemoIncidentCatalog
 
         ### Pasos de resolución
         1. `curl http://localhost/api/status` — verificar health de la API.
-        2. `docker logs membresia-api --tail=100` — errores de la aplicación.
-        3. Verificar SQL Server: `docker exec membresia-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -C -Q 'SELECT 1'`
+        2. `docker logs <contenedor de la API> --tail=100` — errores de la aplicación.
+        3. Verificar que la base de datos responde desde su contenedor (`sqlcmd ... -Q 'SELECT 1'`).
         4. Reiniciar si es necesario: `docker compose -p argos-apps restart api`
 
         ### Prevención
@@ -37,7 +37,7 @@ public sealed class DemoIncidentCatalog(IClock clock) : IDemoIncidentCatalog
         ### Pasos de resolución
         1. Identificar proceso: `top -bn1 | head -20`
         2. Revisar tráfico Nginx: `docker logs nginx-proxy --tail=200`
-        3. Revisar API: `docker stats membresia-api --no-stream`
+        3. Revisar el consumo de la API: `docker stats --no-stream`
         4. Reiniciar si está degradado: `docker compose -p argos-apps restart api`
 
         ### Prevención
@@ -77,7 +77,7 @@ public sealed class DemoIncidentCatalog(IClock clock) : IDemoIncidentCatalog
             detectedAt: Ts(days: 10, hours: 9), resolvedAt: Ts(days: 10, hours: 8, minutes: 42),
             mttrMinutes: 18.0, documento: DocCpu),
         Create("NginxHighResponseTime",
-            "P95 de latencia upstream superó 2.5s. Causa: query sin índice en MembresiaDB.",
+            "P95 de latencia upstream superó 2.5s. Causa: query sin índice en la base de datos.",
             ["Revisar slow query log", "Agregar índice en tabla Usuarios", "Validar P95 < 500ms"],
             estado: "resuelto", fuente: "alertmanager", severity: "warning",
             detectedAt: Ts(days: 9, hours: 14), resolvedAt: Ts(days: 9, hours: 12, minutes: 55),

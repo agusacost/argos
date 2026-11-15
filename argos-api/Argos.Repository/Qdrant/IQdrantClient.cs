@@ -11,7 +11,9 @@ public interface IQdrantClient
 
     Task UpsertAsync(string collection, string id, IReadOnlyList<float> vector, JsonObject payload, CancellationToken ct = default);
 
-    Task<IReadOnlyList<QdrantPoint>> SearchAsync(string collection, IReadOnlyList<float> vector, int limit, CancellationToken ct = default);
+    /// <summary>Búsqueda vectorial, opcionalmente restringida por un filtro de payload.</summary>
+    Task<IReadOnlyList<QdrantPoint>> SearchAsync(string collection, IReadOnlyList<float> vector, int limit,
+        QdrantFilter? filter = null, CancellationToken ct = default);
 
     /// <summary>Recorre la colección completa (paginando) con el filtro opcional.</summary>
     Task<IReadOnlyList<QdrantPoint>> ScrollAsync(string collection, QdrantFilter? filter = null, CancellationToken ct = default);

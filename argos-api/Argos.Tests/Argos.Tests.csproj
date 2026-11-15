@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pruebas unitarias de la lógica pura (sin Qdrant, Loki ni LLM): dotnet test Argos.slnx -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Argos.Common\Argos.Common.csproj" />
+    <ProjectReference Include="..\Argos.Entities\Argos.Entities.csproj" />
+    <ProjectReference Include="..\Argos.Repository\Argos.Repository.csproj" />
+    <ProjectReference Include="..\Argos.Business\Argos.Business.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,6 +1,6 @@
 using Argos.Business.Services.Audit;
 using Argos.Business.Services.Notifications;
-using Argos.Business.Services.Settings;
+using Argos.Business.Services.Rag;
 using Argos.Common.Exceptions;
 using Argos.Common.Time;
 using Argos.Entities;
@@ -12,7 +12,7 @@ namespace Argos.Business.Services.Incidents;
 
 public sealed class AlertLifecycleService(
     IIncidentRepository incidents,
-    ISettingsService settings,
+    IKnowledgeMatcher matcher,
     INotificationService notifications,
     IAuditService audit,
     IClock clock,
@@ -32,7 +32,7 @@ public sealed class AlertLifecycleService(
         if (existing is not null)
             return new AlertOccurrenceResponse(existing.Id!, false, existing.HasSolution);
 
-        var known = await BestDocumentedMatchAsync(request.Resumen!);
+        var known = await BestDocumentedMatchAsync(request.Resumen!, tipo);
         var incident = await incidents.SaveAsync(new Incident
         {
             TipoAlerta = tipo,
@@ -79,15 +79,15 @@ public sealed class AlertLifecycleService(
         return new AlertResolutionResponse(incident.Id, incident.MttrMinutes);
     }
 
-    private async Task<Incident?> BestDocumentedMatchAsync(string text)
+    /// <summary>
+    /// La misma regla que <c>/query</c> (umbral o nombre de alerta): así una alerta que n8n mandó por la rama
+    /// 'conocida' recibe la solución del documento que la hizo conocida. Los runbooks manuales traen pasos sin
+    /// documento; los auto-documentados, documento sin pasos.
+    /// </summary>
+    private async Task<Incident?> BestDocumentedMatchAsync(string text, string tipo)
     {
-        var threshold = await settings.GetSimilarityThresholdAsync();
-        return (await incidents.SearchSimilarAsync(text, MatchCandidates))
-            // Los runbooks manuales traen pasos sin documento; los auto-documentados, documento sin pasos.
-            .Where(h => h.Score > threshold && h.Incident.CountsAsKnowledge && h.Incident.HasSolution)
-            .OrderByDescending(h => h.Score)
-            .Select(h => h.Incident)
-            .FirstOrDefault();
+        var best = (await matcher.LookupAsync(text, tipo, MatchCandidates)).Classification.Best;
+        return best is { Incident.HasSolution: true } ? best.Incident : null;
     }
 
     // El incidente ya quedó guardado: un aviso que falla no debe hacer fallar el request de n8n.

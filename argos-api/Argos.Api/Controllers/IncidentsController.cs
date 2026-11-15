@@ -18,7 +18,8 @@ public sealed class IncidentsController(IIncidentService incidents, IAuditServic
         [FromQuery] string? estado = null,
         [FromQuery] string? tipo = null,
         [FromQuery] string? search = null) =>
-        incidents.ListAsync(new IncidentFilter { Page = page, Size = size, Estado = estado, Tipo = tipo, Search = search });
+        // 'tipo' es texto libre en el panel: coincidencia parcial sin distinguir mayúsculas (F-05).
+        incidents.ListAsync(new IncidentFilter { Page = page, Size = size, Estado = estado, TipoContains = tipo, Search = search });
 
     [HttpGet("metrics")]
     public Task<IncidentMetrics> Metrics() => incidents.GetMetricsAsync();
@@ -30,6 +31,12 @@ public sealed class IncidentsController(IIncidentService incidents, IAuditServic
         [FromQuery] string? search = null) =>
         incidents.ListKnowledgeBaseAsync(page, size, search);
 
+    /// <summary>"Nuevo documento" del panel: runbook manual en la base de conocimiento (solo Admin). 201 con el incidente.</summary>
+    [Authorize(Roles = UserRoles.Admin)]
+    [HttpPost("knowledge-base")]
+    public async Task<ObjectResult> CreateKnowledgeEntry(KnowledgeEntryRequest request) =>
+        Created(await incidents.CreateKnowledgeEntryAsync(request, RequiredUser));
+
     [HttpGet("{incidentId}")]
     public Task<Incident> Get(string incidentId) => incidents.GetAsync(incidentId);
 
@@ -37,6 +44,15 @@ public sealed class IncidentsController(IIncidentService incidents, IAuditServic
     [HttpPatch("{incidentId}")]
     public Task<Incident> Update(string incidentId, IncidentPatchRequest request) =>
         incidents.UpdateAsync(incidentId, request, RequiredUser);
+
+    /// <summary>Borra el incidente o documento (solo Admin; p. ej. limpieza de la suite E2E). 204, o 404 si no existe.</summary>
+    [Authorize(Roles = UserRoles.Admin)]
+    [HttpDelete("{incidentId}")]
+    public async Task<NoContentResult> Delete(string incidentId)
+    {
+        await incidents.DeleteAsync(incidentId, RequiredUser);
+        return NoContent();
+    }
 
     /// <summary>Genera la documentación técnica con el LLM y la guarda en el incidente (solo Admin, como en la UI).</summary>
     [Authorize(Roles = UserRoles.Admin)]

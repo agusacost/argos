@@ -4,7 +4,7 @@ resumen: "Alta tasa de errores HTTP 5xx en Nginx (>5% de las requests durante 5 
 pasos:
   - "Verificar logs de error de Nginx: docker logs nginx-proxy --tail=100"
   - "Revisar estado de la API .NET: curl http://localhost:5000/api/status"
-  - "Comprobar que SQL Server responde: docker exec membresia-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -C -Q 'SELECT 1'"
+  - "Comprobar que SQL Server responde: docker exec membresia-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P '<contraseña de sa>' -C -Q 'SELECT 1'"
   - "Revisar uso de recursos del contenedor API: docker stats membresia-api --no-stream"
   - "Si la API está detenida o colgada (docker ps -a --filter name=membresia-api): docker start membresia-api o docker restart membresia-api"
   - "Si el problema persiste, revisar los logs de la aplicación en Grafana (dashboard nginx-logs)"

@@ -9,4 +9,7 @@ public sealed class SettingsPatchRequest : IRequestDto
     public bool? AutoDocEnabled { get; set; }
     public int? PollingIntervalSeconds { get; set; }
     public List<string>? AlertRecipients { get; set; }
+
+    /// <summary>Contexto del entorno para los prompts; "" lo deja vacío a propósito.</summary>
+    public string? EnvironmentContext { get; set; }
 }

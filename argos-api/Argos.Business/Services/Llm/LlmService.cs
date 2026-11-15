@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Argos.Business.Services.Privacy;
 using Argos.Common.Configuration;
 using Argos.Common.Exceptions;
 using Argos.Entities;
@@ -17,13 +18,16 @@ public sealed class LlmService : ILlmService
     private readonly IReadOnlyDictionary<string, ILlmProvider> _providers;
     private readonly ILlmConfig _config;
     private readonly ILlmHealthTracker _health;
+    private readonly IIpPseudonymizer _privacy;
     private readonly ILogger<LlmService> _log;
 
-    public LlmService(IEnumerable<ILlmProvider> providers, ILlmConfig config, ILlmHealthTracker health, ILogger<LlmService> log)
+    public LlmService(IEnumerable<ILlmProvider> providers, ILlmConfig config, ILlmHealthTracker health,
+        IIpPseudonymizer privacy, ILogger<LlmService> log)
     {
         _providers = providers.ToDictionary(p => p.Name);
         _config = config;
         _health = health;
+        _privacy = privacy;
         _log = log;
     }
 
@@ -66,7 +70,29 @@ public sealed class LlmService : ILlmService
     public Task<LlmCheckResult> CheckAsync(LlmSelection selection) =>
         ProviderFor(selection.Provider).CheckAsync(selection.Model);
 
-    public async Task<LlmGeneration> GenerateAsync(string systemPrompt, string userPrompt, AppSettings settings)
+    public bool AcceptsModel(string provider, string model) =>
+        _providers.TryGetValue(provider.Trim().ToLowerInvariant(), out var p) && p.AcceptsModel(model.Trim());
+
+    public string DefaultModelOf(string provider) => ProviderFor(provider.Trim().ToLowerInvariant()).DefaultModel;
+
+    // Toda generación pasa por acá: ninguna IP sale hacia el proveedor (se restauran en la respuesta).
+    public Task<LlmGeneration> GenerateAsync(string systemPrompt, string userPrompt, AppSettings settings) =>
+        WithPseudonymizedIpsAsync(systemPrompt, userPrompt, (s, u) => GenerateWithChainAsync(s, u, settings));
+
+    public Task<LlmGeneration> GenerateWithAsync(string provider, string? model, string systemPrompt, string userPrompt) =>
+        WithPseudonymizedIpsAsync(systemPrompt, userPrompt, (s, u) => GenerateWithSingleAsync(provider, model, s, u));
+
+    private async Task<LlmGeneration> WithPseudonymizedIpsAsync(string systemPrompt, string userPrompt,
+        Func<string, string, Task<LlmGeneration>> generate)
+    {
+        var session = _privacy.Begin();
+        var (system, user) = session.MaskPrompts(systemPrompt, userPrompt);
+        if (session.Count > 0) _log.LogInformation("[llm] {Count} IP seudonimizadas antes de llamar al proveedor", session.Count);
+        var generation = await generate(system, user);
+        return generation with { Text = session.Restore(generation.Text), PseudonymizedIps = session.Count };
+    }
+
+    private async Task<LlmGeneration> GenerateWithChainAsync(string systemPrompt, string userPrompt, AppSettings settings)
     {
         var primary = Resolve(settings);
         var chain = BuildChain(settings).Where(s => IsConfigured(s.Provider)).ToList();
@@ -99,7 +125,7 @@ public sealed class LlmService : ILlmService
             "Ningún proveedor LLM respondió: " + string.Join("; ", attempts.Select(a => $"{a.Provider}/{a.Model} → {a.Error}")));
     }
 
-    public async Task<LlmGeneration> GenerateWithAsync(string provider, string? model, string systemPrompt, string userPrompt)
+    private async Task<LlmGeneration> GenerateWithSingleAsync(string provider, string? model, string systemPrompt, string userPrompt)
     {
         if (!_providers.TryGetValue(provider.Trim().ToLowerInvariant(), out var selected))
             throw new InvalidInputException($"Campo 'provider': debe ser uno de {string.Join(", ", ProviderNames)}");
@@ -123,9 +149,9 @@ public sealed class LlmService : ILlmService
         }
     }
 
-    public Task<LlmGeneration> GenerateIncidentDocumentAsync(AppSettings settings, Incident incident)
+    public Task<LlmGeneration> GenerateIncidentDocumentAsync(AppSettings settings, Incident incident, string? evidence = null)
     {
-        var prompt = new IncidentDocumentPrompt(incident);
+        var prompt = new IncidentDocumentPrompt(incident, evidence, settings.EnvironmentContext);
         return GenerateAsync(prompt.System, prompt.UserPrompt, settings);
     }
 

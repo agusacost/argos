@@ -43,10 +43,27 @@ public sealed class LokiClient(IHttpClientFactory httpFactory, IObservabilityCon
         return output;
     }
 
-    private async Task<JsonNode?> GetAsync(RangeQuery query)
+    public async Task<IReadOnlyList<LokiSample>> QueryVectorAsync(string query, DateTimeOffset time)
+    {
+        var q = new RangeQuery()
+            .Add("query", query)
+            .Add("time", RangeQuery.UnixNanos(time));
+        var samples = new List<LokiSample>();
+        foreach (var series in (await GetAsync(q, "query"))?["data"]?["result"]?.AsArray() ?? [])
+        {
+            var labels = new Dictionary<string, string>();
+            foreach (var (k, v) in series?["metric"]?.AsObject() ?? [])
+                labels[k] = v?.ToString() ?? "";
+            if (double.TryParse(series?["value"]?[1]?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var val))
+                samples.Add(new LokiSample(labels, val));
+        }
+        return samples;
+    }
+
+    private async Task<JsonNode?> GetAsync(RangeQuery query, string endpoint = "query_range")
     {
         using var r = await httpFactory.CreateClient(HttpClientNames.Observability)
-            .GetAsync($"{config.LokiUrl}/loki/api/v1/query_range?{query}");
+            .GetAsync($"{config.LokiUrl}/loki/api/v1/{endpoint}?{query}");
         r.EnsureSuccessStatusCode();
         return JsonNode.Parse(await r.Content.ReadAsStringAsync());
     }

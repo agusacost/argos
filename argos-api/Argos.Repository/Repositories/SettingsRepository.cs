@@ -1,3 +1,4 @@
+using Argos.Common.Configuration;
 using Argos.Entities;
 using Argos.Repository.Qdrant;
 
@@ -7,7 +8,8 @@ namespace Argos.Repository.Repositories;
 /// Configuración del dashboard: un único punto con id fijo en <c>argos_settings</c> (vector dummy).
 /// No es una <see cref="Entity"/>: no tiene id propio en la API.
 /// </summary>
-public sealed class SettingsRepository(IQdrantClient client, IPayloadSerializer serializer) : ISettingsRepository
+public sealed class SettingsRepository(IQdrantClient client, IPayloadSerializer serializer, IEnvironmentContextConfig environment)
+    : ISettingsRepository
 {
     private const string SettingsId = "00000000-0000-0000-0000-000000000001";
     private static readonly float[] DummyVector = [1.0f];
@@ -24,6 +26,8 @@ public sealed class SettingsRepository(IQdrantClient client, IPayloadSerializer 
         var point = await client.RetrieveAsync(CollectionNames.Settings, SettingsId);
         var settings = point is null ? new AppSettings() : serializer.Deserialize<AppSettings>(point.Payload);
         settings.RemoveObsoleteFields();
+        // Sin editar todavía: el contexto del entorno sale del despliegue (ARGOS_ENVIRONMENT_CONTEXT), no del código.
+        settings.EnvironmentContext ??= environment.DefaultEnvironmentContext;
         return settings;
     }
 

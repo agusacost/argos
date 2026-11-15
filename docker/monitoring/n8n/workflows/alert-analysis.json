@@ -35,7 +35,7 @@
           300
         ],
         "parameters": {
-          "jsCode": "// Payload de Alertmanager. Las resoluciones (status=resolved) no se analizan ni se notifican por email:\n// van a 'Resolve Incident'. A las alertas activas se les aplica el umbral: si no se supera, devuelve [] y corta.\nconst body = ($input.first().json.body) || $input.first().json || {};\nconst alerts = Array.isArray(body.alerts) ? body.alerts : [];\nconst status = body.status || 'firing';\nconst first = alerts[0] || {};\nconst ann = body.commonAnnotations || first.annotations || {};\nconst labels = body.commonLabels || first.labels || {};\nconst alertname = labels.alertname || (first.labels && first.labels.alertname) || 'unknown';\nconst severity = labels.severity || (first.labels && first.labels.severity) || 'warning';\nif (status !== 'resolved') {\n  const threshold = parseInt($env.ALERT_THRESHOLD || '3', 10);\n  const hasCritical = alerts.some(a => a.labels && a.labels.severity === 'critical');\n  if (!(alerts.length >= threshold || hasCritical)) return [];\n}\nconst summary = ann.summary || alertname || 'Alerta sin resumen';\nconst description = ann.description || '';\n// Mismo texto para buscar en el RAG y para guardar el incidente: así la próxima ocurrencia lo reconoce.\nconst query_text = description ? `${summary}. ${description}` : summary;\n// Alertmanager manda endsAt=0001-01-01 mientras la alerta sigue activa.\nconst validDate = (d) => (d && !String(d).startsWith('0001-')) ? d : null;\nreturn [{ json: {\n  summary, description, alertname, severity, query_text,\n  alertsCount: alerts.length,\n  status,\n  starts_at: validDate(first.startsAt) || new Date().toISOString(),\n  ends_at: validDate(first.endsAt)\n} }];"
+          "jsCode": "// Payload de Alertmanager. Las resoluciones (status=resolved) no se analizan ni se notifican por email:\n// van a 'Resolve Incident'. A las alertas activas se les aplica el umbral: si no se supera, devuelve [] y corta.\nconst body = ($input.first().json.body) || $input.first().json || {};\nconst alerts = Array.isArray(body.alerts) ? body.alerts : [];\nconst status = body.status || 'firing';\nconst first = alerts[0] || {};\nconst ann = body.commonAnnotations || first.annotations || {};\nconst labels = body.commonLabels || first.labels || {};\nconst alertname = labels.alertname || (first.labels && first.labels.alertname) || 'unknown';\nconst severity = labels.severity || (first.labels && first.labels.severity) || 'warning';\nif (status !== 'resolved') {\n  const threshold = parseInt($env.ALERT_THRESHOLD || '3', 10);\n  const hasCritical = alerts.some(a => a.labels && a.labels.severity === 'critical');\n  if (!(alerts.length >= threshold || hasCritical)) return [];\n}\nconst summary = ann.summary || alertname || 'Alerta sin resumen';\nconst description = ann.description || '';\n// Mismo texto para buscar en el RAG y para guardar el incidente: así la próxima ocurrencia lo reconoce.\nconst query_text = description ? `${summary}. ${description}` : summary;\n// Alertmanager manda endsAt=0001-01-01 mientras la alerta sigue activa.\nconst validDate = (d) => (d && !String(d).startsWith('0001-')) ? d : null;\n// Labels de la alerta: 'evidence' (declarado en la regla) le dice a la API de dónde sacar la evidencia\n// ('nginx' o 'target') e 'instance' es el host del target. instance viene en cada alerta, no en commonLabels.\nconst alertLabels = { ...(first.labels || {}), ...(body.commonLabels || {}) };\nreturn [{ json: {\n  summary, description, alertname, severity, query_text, labels: alertLabels,\n  alertsCount: alerts.length,\n  status,\n  starts_at: validDate(first.startsAt) || new Date().toISOString(),\n  ends_at: validDate(first.endsAt)\n} }];"
         }
       },
       {
@@ -91,8 +91,39 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ { \"text\": $('Prepare').item.json.query_text, \"top_k\": 3 } }}",
+          "jsonBody": "={{ { \"text\": $('Prepare').item.json.query_text, \"top_k\": 3, \"alertname\": $('Prepare').item.json.alertname } }}",
           "options": {}
+        }
+      },
+      {
+        "id": "get-evidence",
+        "name": "Get Evidence",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          880,
+          300
+        ],
+        "onError": "continueRegularOutput",
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.RAG_API_URL || 'http://rag-api:8000' }}/internal/evidence",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Argos-Token",
+                "value": "={{ $env.ARGOS_INTERNAL_TOKEN || '' }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { alertname: $('Prepare').item.json.alertname, starts_at: $('Prepare').item.json.starts_at, labels: $('Prepare').item.json.labels } }}",
+          "options": {
+            "timeout": 15000
+          }
         }
       },
       {
@@ -101,11 +132,11 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          880,
+          1060,
           300
         ],
         "parameters": {
-          "jsCode": "// Combina la alerta (nodo Prepare) con el contexto RAG para armar el prompt del modelo LLM.\nconst prep = $('Prepare').item.json;\nconst rag = $json || {};\nconst results = Array.isArray(rag.results) ? rag.results.slice(0, 3) : [];\n// Solución de cada match: los runbooks traen 'pasos'; los auto-documentados, solo 'documento' (se usa su sección\n// de pasos, o el inicio del documento): así el análisis aprovecha lo que la plataforma aprendió.\nconst solutionOf = (r) => {\n  const pasos = (r.pasos || []).filter(Boolean);\n  if (pasos.length) return `Pasos: ${pasos.join(' | ')}`;\n  const doc = String(r.documento || '').trim();\n  if (!doc) return 'Sin solución registrada.';\n  const m = doc.match(/##\\s*Pasos de resoluci[oó]n[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)/i);\n  const text = (m ? m[1] : doc).trim().replace(/\\n{2,}/g, '\\n');\n  return `Solución documentada:\\n${text.length > 900 ? text.slice(0, 900) + '…' : text}`;\n};\nconst contextLines = results.map((r, i) =>\n  `${i + 1}. [score ${Number(r.score).toFixed(3)} · ${r.clasificacion}] ${r.tipo_alerta}: ${r.resumen}\\n   ${solutionOf(r).replace(/\\n/g, '\\n   ')}`\n).join('\\n');\nconst system = 'Sos un analista de AIOps. Dado el contexto de una alerta y datos históricos de incidentes, sintetizá el problema en términos técnicos claros y proponé pasos de resolución accionables y numerados. Sé conciso. Respondé en español. Si el contexto histórico aplica, referencialo. Entorno de Argos: un único host con Docker Compose (proyecto argos-platform), sin Kubernetes ni systemd. Contenedores: nginx-proxy (reverse proxy, puerto 80), membresia-api (API .NET, upstream de Nginx; en el host :5000), membresia-sqlserver (SQL Server de la API), nginx-prometheus-exporter (:9113), node-exporter (:9100), cadvisor (:8080), alloy (envía los logs de Nginx a Loki), argos-platform-prometheus-1, argos-platform-loki-1, argos-platform-alertmanager-1, argos-platform-grafana-1. En los comandos usá esos nombres reales (docker ps -a, docker logs, docker start/restart).';\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\nContexto histórico (RAG, documentado=${rag.is_documented}):\\n${contextLines || 'Sin coincidencias relevantes.'}\\n\\nSintetizá el problema y proponé pasos de resolución.`;\nreturn [{ json: { system, user, prep, is_documented: !!rag.is_documented } }];"
+          "jsCode": "// Combina la alerta (Prepare), el contexto RAG (RAG Query) y la evidencia de logs (Get Evidence) para armar el prompt.\n// Las IP de la evidencia y de la alerta las seudonimiza rag-api en /internal/llm/generate (no salen al proveedor).\nconst prep = $('Prepare').item.json;\nconst rag = $('RAG Query').item.json || {};\nconst ev = $('Get Evidence').item.json || {};\n// Sección ya armada por rag-api (vacía si Loki no respondió o no hubo líneas; si el nodo falló trae 'error').\nconst evidenceText = typeof ev.text === 'string' ? ev.text.trim() : '';\nconst results = Array.isArray(rag.results) ? rag.results.slice(0, 4) : [];\n// Solución de cada match: los runbooks traen 'pasos'; los auto-documentados, solo 'documento' (se usa su sección\n// de pasos, o el inicio del documento): así el análisis aprovecha lo que la plataforma aprendió.\nconst solutionOf = (r) => {\n  const pasos = (r.pasos || []).filter(Boolean);\n  if (pasos.length) return `Pasos: ${pasos.join(' | ')}`;\n  const doc = String(r.documento || '').trim();\n  if (!doc) return 'Sin solución registrada.';\n  const m = doc.match(/##\\s*Pasos de resoluci[oó]n[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)/i);\n  const text = (m ? m[1] : doc).trim().replace(/\\n{2,}/g, '\\n');\n  return `Solución documentada:\\n${text.length > 900 ? text.slice(0, 900) + '…' : text}`;\n};\nconst contextLines = results.map((r, i) =>\n  `${i + 1}. [score ${Number(r.score).toFixed(3)} · ${r.clasificacion}] ${r.tipo_alerta}: ${r.resumen}\\n   ${solutionOf(r).replace(/\\n/g, '\\n   ')}`\n).join('\\n');\nconst reason = rag.match_reason === 'alert_name' ? ', por coincidencia del tipo de alerta' : '';\n// Contexto del entorno: lo escribe quien opera el servicio (Configuración del panel o ARGOS_ENVIRONMENT_CONTEXT);\n// Argos no conoce los contenedores del servicio monitoreado.\nlet environmentContext = '';\ntry { environmentContext = String(($('Get Config').item.json || {}).environment_context || '').trim(); } catch (e) {}\nconst system = 'Sos un analista de AIOps. Dado el contexto de una alerta y datos históricos de incidentes, sintetizá el problema en términos técnicos claros y proponé pasos de resolución accionables y numerados. Sé conciso. Respondé en español. Si el contexto histórico aplica, referencialo. Si se incluye evidencia de logs, usala para discriminar la causa raíz (por ejemplo, si el upstream no acepta conexiones o si responde con error) y no afirmes nada que la evidencia no muestre; si no alcanza, decí qué verificar. Proponé comandos que correspondan al entorno descripto en el contexto del entorno y usá los nombres de servicios y contenedores que aparezcan ahí, en la evidencia o en los incidentes históricos; no inventes nombres ni uses herramientas de otras plataformas que el contexto no mencione.' + (environmentContext ? ' Contexto del entorno (lo describe quien opera el servicio): ' + environmentContext : '');\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\n` +\n  (evidenceText ? `${evidenceText}\\n\\n` : '') +\n  `Contexto histórico (RAG, documentado=${rag.is_documented}${reason}):\\n${contextLines || 'Sin coincidencias relevantes.'}\\n\\nSintetizá el problema y proponé pasos de resolución.`;\nreturn [{ json: { system, user, prep, is_documented: !!rag.is_documented, match_reason: rag.match_reason || null,\n  evidence_text: evidenceText, evidence_lines: Number(ev.line_count) || 0,\n  environment_context: environmentContext } }];"
         }
       },
       {
@@ -239,7 +270,7 @@
           460
         ],
         "parameters": {
-          "jsCode": "// Incidente NUEVO (sin match en la KB): arma el prompt para generar documentación técnica.\nconst prep = $('Build Prompt').item.json.prep;\nconst system = 'Sos un ingeniero SRE documentando un incidente NUEVO para la base de conocimiento de Argos. Generá documentación técnica concisa en Markdown con estas secciones exactas: \"# Título\", \"## Descripción\", \"## Causa raíz probable\", \"## Pasos de resolución\" (lista numerada), \"## Prevención\". Respondé en español y devolvé SOLO el Markdown, sin texto adicional. Entorno de Argos: un único host con Docker Compose (proyecto argos-platform), sin Kubernetes ni systemd. Contenedores: nginx-proxy (reverse proxy, puerto 80), membresia-api (API .NET, upstream de Nginx; en el host :5000), membresia-sqlserver (SQL Server de la API), nginx-prometheus-exporter (:9113), node-exporter (:9100), cadvisor (:8080), alloy (envía los logs de Nginx a Loki), argos-platform-prometheus-1, argos-platform-loki-1, argos-platform-alertmanager-1, argos-platform-grafana-1. En los comandos usá esos nombres reales (docker ps -a, docker logs, docker start/restart).';\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\nEste incidente NO existe en la base de conocimiento de Argos. Generá su documentación técnica completa.`;\nreturn [{ json: { system, user } }];"
+          "jsCode": "// Incidente NUEVO (sin match en la KB): arma el prompt para generar documentación técnica, con la misma evidencia\n// de logs que el análisis (la arma 'Build Prompt' a partir de 'Get Evidence').\nconst bp = $('Build Prompt').item.json;\nconst prep = bp.prep;\nconst evidenceText = typeof bp.evidence_text === 'string' ? bp.evidence_text.trim() : '';\nconst environmentContext = typeof bp.environment_context === 'string' ? bp.environment_context.trim() : '';\nconst system = 'Sos un ingeniero SRE documentando un incidente NUEVO para la base de conocimiento de Argos. Generá documentación técnica concisa en Markdown con estas secciones exactas: \"# Título\", \"## Descripción\", \"## Causa raíz probable\", \"## Pasos de resolución\" (lista numerada), \"## Prevención\". Respondé en español y devolvé SOLO el Markdown, sin texto adicional. Si se incluye evidencia de logs, usala para discriminar la causa raíz (por ejemplo, si el upstream no acepta conexiones o si responde con error) y no afirmes nada que la evidencia no muestre; si no alcanza, decí qué verificar. Proponé comandos que correspondan al entorno descripto en el contexto del entorno y usá los nombres de servicios y contenedores que aparezcan ahí, en la evidencia o en los incidentes históricos; no inventes nombres ni uses herramientas de otras plataformas que el contexto no mencione.' + (environmentContext ? ' Contexto del entorno (lo describe quien opera el servicio): ' + environmentContext : '');\nconst user = `Alerta: ${prep.alertname} (severidad: ${prep.severity})\\nResumen: ${prep.summary}\\nDescripción: ${prep.description}\\nAlertas activas en el grupo: ${prep.alertsCount}\\n\\n` +\n  (evidenceText ? `${evidenceText}\\n\\n` : '') +\n  'Este incidente NO existe en la base de conocimiento de Argos. Generá su documentación técnica completa.';\nreturn [{ json: { system, user } }];"
         }
       },
       {
@@ -504,7 +535,7 @@
         "main": [
           [
             {
-              "node": "Build Prompt",
+              "node": "Get Evidence",
               "type": "main",
               "index": 0
             }
@@ -691,6 +722,17 @@
           [
             {
               "node": "Get Recipients",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Evidence": {
+        "main": [
+          [
+            {
+              "node": "Build Prompt",
               "type": "main",
               "index": 0
             }

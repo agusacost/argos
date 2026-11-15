@@ -1,5 +1,4 @@
 using Argos.Business.Services.Notifications;
-using Argos.Business.Services.Settings;
 using Argos.Common.Time;
 using Argos.Entities;
 using Argos.Entities.Dtos;
@@ -10,7 +9,7 @@ namespace Argos.Business.Services.Rag;
 
 public sealed class RagService(
     IIncidentRepository incidents,
-    ISettingsService settings,
+    IKnowledgeMatcher matcher,
     INotificationService notifications,
     IClock clock,
     ILogger<RagService> log) : IRagService
@@ -21,10 +20,20 @@ public sealed class RagService(
     public async Task<QueryResponse> QueryAsync(QueryRequest request)
     {
         var text = request.Text!;
-        var threshold = await settings.GetSimilarityThresholdAsync();
-        var hits = await incidents.SearchSimilarAsync(text, request.TopK ?? QueryRequest.DefaultTopK);
-        var matches = hits.Select(h => new IncidentMatch(h.Incident, h.Score, threshold)).ToList();
-        return new QueryResponse(text, threshold, matches.Any(m => m.IsDocumentedAbove(threshold)), matches);
+        var topK = request.TopK ?? QueryRequest.DefaultTopK;
+        var lookup = await matcher.LookupAsync(text, request.Alertname, topK);
+        var (threshold, classification) = (lookup.Threshold, lookup.Classification);
+        var byName = classification.Reason == KnowledgeMatchReasons.AlertName ? classification.Best : null;
+
+        // Los top-k de siempre; si la alerta es conocida por nombre y su documento no está entre ellos, se agrega al
+        // final (orden por score) para que el LLM lo reciba como contexto.
+        var shown = lookup.Candidates.Take(topK).ToList();
+        if (byName is not null && !shown.Contains(byName)) shown.Add(byName);
+        var matches = shown
+            .Select(h => new IncidentMatch(h.Incident, h.Score, threshold, knownByAlertName: ReferenceEquals(h, byName)))
+            .ToList();
+        return new QueryResponse(text, threshold, classification.IsKnown, matches, classification.Reason,
+            lookup.NameMatchMinScore);
     }
 
     public async Task<UpsertResponse> UpsertAsync(UpsertIncidentRequest request)

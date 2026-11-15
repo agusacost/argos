@@ -1,3 +1,6 @@
+# Label "evidence": de dónde saca Argos la evidencia de logs para el análisis.
+#   nginx  = logs de Nginx y, a partir de ellos, el upstream que Nginx reporta en los errores.
+#   target = el host del label "instance" (el componente que dejó de responder).
 groups:
   - name: nginx
     interval: 30s
@@ -7,6 +10,7 @@ groups:
         for: 1m
         labels:
           severity: critical
+          evidence: target
         annotations:
           summary: "Nginx no responde"
           description: "El exporter de Nginx no puede scrapearlo en {{ $labels.instance }} durante más de 1 minuto."
@@ -16,6 +20,7 @@ groups:
         for: 5m
         labels:
           severity: warning
+          evidence: nginx
         annotations:
           summary: "Nginx con alta cantidad de conexiones activas"
           description: "{{ $value }} conexiones activas (umbral: 800). Posible pico de tráfico o conexiones colgadas."
@@ -25,6 +30,7 @@ groups:
         for: 5m
         labels:
           severity: warning
+          evidence: nginx
         annotations:
           summary: "Tasa de requests de Nginx inusualmente alta"
           description: "{{ $value | humanize }} req/s en los últimos 5 minutos (umbral: 500 req/s)."
@@ -34,6 +40,7 @@ groups:
         for: 5m
         labels:
           severity: warning
+          evidence: nginx
         annotations:
           summary: "Alto número de conexiones en estado waiting"
           description: "{{ $value }} conexiones en waiting. Puede indicar backend lento o keep-alive excesivo."

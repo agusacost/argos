@@ -7,7 +7,8 @@ namespace Argos.Common.Configuration;
 /// documenta docker/monitoring/.env.example). Cada valor tiene un default para desarrollo local.
 /// </summary>
 public sealed class EnvironmentConfig
-    : IQdrantConfig, IAuthConfig, ISeedConfig, ILlmConfig, IObservabilityConfig, ILoadTestConfig, IHostingConfig
+    : IQdrantConfig, IAuthConfig, ISeedConfig, ILlmConfig, IObservabilityConfig, ILoadTestConfig, IHostingConfig,
+        IPrivacyConfig, IEvidenceConfig, IEnvironmentContextConfig
 {
     // ─── RAG / Qdrant ────────────────────────────────────────────────────────
     public string QdrantUrl => Get("QDRANT_URL", "http://localhost:6333").TrimEnd('/');
@@ -16,6 +17,7 @@ public sealed class EnvironmentConfig
     public string Distance => Get("DISTANCE", "Cosine");
     public double SimilarityThreshold => Double("SIMILARITY_THRESHOLD", 0.75);
     public string EmbeddingModelDir => Get("EMBEDDING_MODEL_DIR", Path.Combine(AppContext.BaseDirectory, "models"));
+    public double NameMatchMinScore => Double("RAG_NAME_MATCH_MIN_SCORE", 0.30);
 
     // ─── Auth ────────────────────────────────────────────────────────────────
     public string JwtSecret => Get("JWT_SECRET", "argos-dev-secret-change-in-production");
@@ -41,6 +43,15 @@ public sealed class EnvironmentConfig
     public string OpenRouterModel => Get("OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free");
     public string LlmFallbackChain => Get("LLM_FALLBACK_CHAIN", "gemini:gemini-flash-lite-latest,groq,openrouter");
     public int LlmCooldownSeconds => Int("LLM_COOLDOWN_SECONDS", 300);
+
+    // ─── Privacidad (Ley 25.326, art. 12) ───────────────────────────────────
+    public bool PseudonymizeIps => Flag("LLM_PSEUDONYMIZE_IPS", true);
+
+    // ─── Evidencia de logs para el LLM ──────────────────────────────────────
+    public bool AlertEvidenceEnabled => Flag("ALERT_EVIDENCE_ENABLED", true);
+
+    // ─── Contexto del entorno (prompts) ─────────────────────────────────────
+    public string DefaultEnvironmentContext => Get("ARGOS_ENVIRONMENT_CONTEXT", "").Trim();
 
     // ─── Observabilidad ──────────────────────────────────────────────────────
     public string PrometheusUrl => Get("PROMETHEUS_URL", "http://localhost:9090");

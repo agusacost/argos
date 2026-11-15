@@ -17,6 +17,15 @@ public interface IIncidentService
     /// <summary>Aplica el PATCH del dashboard y lo audita con el usuario autenticado.</summary>
     Task<Incident> UpdateAsync(string incidentId, IncidentPatchRequest patch, CurrentUser currentUser);
 
+    /// <summary>
+    /// Alta manual de un runbook (estado documentado_previamente, fuente manual) desde el panel, auditada.
+    /// 409 si ya existe uno con el mismo tipo de alerta y resumen.
+    /// </summary>
+    Task<Incident> CreateKnowledgeEntryAsync(KnowledgeEntryRequest request, CurrentUser currentUser);
+
+    /// <summary>Borra el incidente (sale también del RAG) y lo audita; 404 si no existe.</summary>
+    Task DeleteAsync(string incidentId, CurrentUser currentUser);
+
     /// <summary>Genera la documentación con el LLM, la guarda (estado auto_documentado) y lo audita.</summary>
     Task<Incident> GenerateDocumentationAsync(string incidentId, CurrentUser currentUser);
 

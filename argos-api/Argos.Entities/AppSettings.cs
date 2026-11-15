@@ -21,6 +21,13 @@ public class AppSettings
     /// <summary>Pool de destinatarios del email de alertas (n8n). Vacío → fallback a ALERT_RECIPIENT_EMAIL.</summary>
     public List<string> AlertRecipients { get; set; } = [];
 
+    /// <summary>
+    /// Descripción del entorno monitoreado que acompaña a los prompts (contenedores, puertos, cómo se opera). La escribe
+    /// quien opera el servicio; Argos no la conoce. null = nunca se editó (se usa ARGOS_ENVIRONMENT_CONTEXT del
+    /// despliegue); "" = vacía a propósito (prompt genérico).
+    /// </summary>
+    public string? EnvironmentContext { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtraFields { get; set; }
 
@@ -36,6 +43,7 @@ public class AppSettings
         AutoDocEnabled = source.AutoDocEnabled;
         PollingIntervalSeconds = source.PollingIntervalSeconds;
         AlertRecipients = [.. source.AlertRecipients];
+        EnvironmentContext = source.EnvironmentContext;
         ExtraFields = source.ExtraFields is null ? null : new Dictionary<string, JsonElement>(source.ExtraFields);
     }
 
@@ -49,7 +57,7 @@ public class AppSettings
 
     /// <summary>Aplica los valores informados (los null se ignoran).</summary>
     public void ApplyPatch(string? llmProvider, string? llmModel, double? similarityThreshold, bool? autoDocEnabled,
-        int? pollingIntervalSeconds, IReadOnlyList<string>? alertRecipients)
+        int? pollingIntervalSeconds, IReadOnlyList<string>? alertRecipients, string? environmentContext = null)
     {
         if (llmProvider is not null) LlmProvider = llmProvider;
         if (llmModel is not null) LlmModel = llmModel;
@@ -57,6 +65,7 @@ public class AppSettings
         if (autoDocEnabled is not null) AutoDocEnabled = autoDocEnabled.Value;
         if (pollingIntervalSeconds is not null) PollingIntervalSeconds = pollingIntervalSeconds.Value;
         if (alertRecipients is not null) AlertRecipients = [.. alertRecipients];
+        if (environmentContext is not null) EnvironmentContext = environmentContext;
     }
 
     public bool UsesSameLlmAs(AppSettings other) => LlmProvider == other.LlmProvider && LlmModel == other.LlmModel;

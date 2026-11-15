@@ -6,4 +6,7 @@
     <Project Path="Argos.Entities/Argos.Entities.csproj" />
     <Project Path="Argos.Repository/Argos.Repository.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="Argos.Tests/Argos.Tests.csproj" />
+  </Folder>
 </Solution>

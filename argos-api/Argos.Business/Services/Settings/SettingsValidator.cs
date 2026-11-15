@@ -11,6 +11,7 @@ public sealed partial class SettingsValidator(ILlmService llm) : ISettingsValida
     private const double ThresholdMin = 0.30, ThresholdMax = 0.95;
     private const int PollingMin = 10, PollingMax = 120;
     private const int MaxAlertRecipients = 50;
+    public const int MaxEnvironmentContextChars = 3000;
 
     public void Validate(SettingsPatchRequest patch)
     {
@@ -24,6 +25,23 @@ public sealed partial class SettingsValidator(ILlmService llm) : ISettingsValida
                 $"Umbral de similitud fuera de rango ({FormatDecimal(ThresholdMin)}–{FormatDecimal(ThresholdMax)})");
         if (patch.PollingIntervalSeconds is { } poll && poll is < PollingMin or > PollingMax)
             throw new InvalidInputException($"Intervalo de refresco fuera de rango ({PollingMin}–{PollingMax} s)");
+    }
+
+    public void ValidateModelForProvider(string provider, string model)
+    {
+        if (llm.AcceptsModel(provider, model)) return;
+        throw new InvalidInputException(
+            $"El modelo '{model.Trim()}' no corresponde al proveedor '{provider}'. " +
+            $"Elegí un modelo de {provider} (por ejemplo '{llm.DefaultModelOf(provider)}').");
+    }
+
+    public string NormalizeEnvironmentContext(string text)
+    {
+        var trimmed = (text ?? "").Trim();
+        if (trimmed.Length > MaxEnvironmentContextChars)
+            throw new InvalidInputException(
+                $"El contexto del entorno admite hasta {MaxEnvironmentContextChars} caracteres (recibidos {trimmed.Length})");
+        return trimmed;
     }
 
     public IReadOnlyList<string> NormalizeRecipients(IEnumerable<string?> emails)

@@ -20,6 +20,7 @@ public sealed class SettingsService(
     {
         validator.Validate(patch);
         var recipients = patch.AlertRecipients is null ? null : validator.NormalizeRecipients(patch.AlertRecipients);
+        var environmentContext = patch.EnvironmentContext is null ? null : validator.NormalizeEnvironmentContext(patch.EnvironmentContext);
 
         if (!string.IsNullOrEmpty(patch.LlmProvider) && !llm.IsConfigured(patch.LlmProvider))
             throw new InvalidInputException(
@@ -28,12 +29,14 @@ public sealed class SettingsService(
         var current = await settings.GetAsync();
         var candidate = current.Copy();
         candidate.ApplyPatch(patch.LlmProvider, patch.LlmModel, patch.SimilarityThreshold, patch.AutoDocEnabled,
-            patch.PollingIntervalSeconds, recipients);
+            patch.PollingIntervalSeconds, recipients, environmentContext);
 
         // Si cambia el LLM, validarlo contra el proveedor (key inválida → 422; modelo dudoso → warning).
         string? warning = null;
         if (!candidate.UsesSameLlmAs(current))
         {
+            // Solo si cambia el LLM: un modelo ajeno ya guardado no bloquea los PATCH de otros campos.
+            validator.ValidateModelForProvider(candidate.LlmProvider, candidate.LlmModel);
             var check = await llm.CheckAsync(llm.Resolve(candidate));
             if (check.Error is not null) throw new InvalidInputException(check.Error);
             warning = check.Warning;
@@ -47,7 +50,8 @@ public sealed class SettingsService(
     {
         var current = await settings.GetAsync();
         var selection = llm.Resolve(current);
-        return new RuntimeConfigDto(selection.Provider, selection.Model, current.AutoDocEnabled, current.SimilarityThreshold);
+        return new RuntimeConfigDto(selection.Provider, selection.Model, current.AutoDocEnabled, current.SimilarityThreshold,
+            current.EnvironmentContext ?? "");
     }
 
     public async Task<RecipientsResponse> GetAlertRecipientsAsync()

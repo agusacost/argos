@@ -18,13 +18,14 @@ public sealed class IncidentMatch : Incident
     {
     }
 
-    public IncidentMatch(Incident incident, double score, double threshold) : base(incident)
+    /// <param name="incident">Incidente devuelto por Qdrant.</param>
+    /// <param name="score">Similitud con la consulta.</param>
+    /// <param name="threshold">Umbral vigente.</param>
+    /// <param name="knownByAlertName">Es el documento que hizo conocida la alerta por coincidencia de nombre.</param>
+    public IncidentMatch(Incident incident, double score, double threshold, bool knownByAlertName = false) : base(incident)
     {
         Id = null;
         Score = score;
-        Clasificacion = score > threshold ? Documentado : Nuevo;
+        Clasificacion = score > threshold || knownByAlertName ? Documentado : Nuevo;
     }
-
-    /// <summary>Supera el umbral y además es conocimiento útil.</summary>
-    public bool IsDocumentedAbove(double threshold) => Score > threshold && CountsAsKnowledge;
 }

@@ -18,13 +18,20 @@ public interface ILlmService
 
     bool IsConfigured(string provider);
 
+    /// <summary>Si el modelo pertenece al proveedor (false si el proveedor no existe).</summary>
+    bool AcceptsModel(string provider, string model);
+
+    /// <summary>Modelo por defecto del proveedor (para los mensajes de error).</summary>
+    string DefaultModelOf(string provider);
+
     /// <summary>Variable de entorno de la key del proveedor (para los mensajes de error).</summary>
     string ApiKeyVariableOf(string provider);
 
     Task<LlmCheckResult> CheckAsync(LlmSelection selection);
 
     /// <summary>
-    /// Recorre la cadena (los eslabones en cooldown van al final) hasta que uno responda.
+    /// Las IP de los prompts se seudonimizan antes de llamar al proveedor y se restauran en el texto devuelto
+    /// (LLM_PSEUDONYMIZE_IPS). Recorre la cadena (los eslabones en cooldown van al final) hasta que uno responda.
     /// <see cref="Argos.Common.Exceptions.UpstreamServiceException"/> si fallan todos.
     /// </summary>
     Task<LlmGeneration> GenerateAsync(string systemPrompt, string userPrompt, AppSettings settings);
@@ -35,8 +42,11 @@ public interface ILlmService
     /// </summary>
     Task<LlmGeneration> GenerateWithAsync(string provider, string? model, string systemPrompt, string userPrompt);
 
-    /// <summary>Documentación técnica en Markdown, con la misma cadena de fallback.</summary>
-    Task<LlmGeneration> GenerateIncidentDocumentAsync(AppSettings settings, Incident incident);
+    /// <summary>
+    /// Documentación técnica en Markdown, con la misma cadena de fallback. <paramref name="evidence"/>: sección de
+    /// evidencia de logs (Loki) ya formateada, o null si no hay.
+    /// </summary>
+    Task<LlmGeneration> GenerateIncidentDocumentAsync(AppSettings settings, Incident incident, string? evidence = null);
 
     /// <summary>Estado conocido de cada eslabón de la cadena (sin llamar a los proveedores).</summary>
     IReadOnlyList<LlmProviderHealth> GetHealth(AppSettings settings);

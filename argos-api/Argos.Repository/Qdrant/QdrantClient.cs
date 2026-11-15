@@ -36,10 +36,11 @@ public sealed class QdrantClient(IHttpClientFactory httpFactory, IQdrantConfig c
     }
 
     public async Task<IReadOnlyList<QdrantPoint>> SearchAsync(string collection, IReadOnlyList<float> vector, int limit,
-        CancellationToken ct = default)
+        QdrantFilter? filter = null, CancellationToken ct = default)
     {
-        var res = await SendAsync(HttpMethod.Post, $"/collections/{collection}/points/search",
-            new JsonObject { ["vector"] = ToJsonArray(vector), ["limit"] = limit, ["with_payload"] = true }, ct);
+        var body = new JsonObject { ["vector"] = ToJsonArray(vector), ["limit"] = limit, ["with_payload"] = true };
+        if (filter is { IsEmpty: false }) body["filter"] = filter.ToJson();
+        var res = await SendAsync(HttpMethod.Post, $"/collections/{collection}/points/search", body, ct);
         return (res?.AsArray() ?? []).Select(p => new QdrantPoint(
             IdOf(p!["id"]),
             p["payload"] as JsonObject ?? [],

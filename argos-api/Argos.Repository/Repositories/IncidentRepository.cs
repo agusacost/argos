@@ -40,18 +40,14 @@ public sealed class IncidentRepository(
     protected override void OnCollectionCreated() =>
         log.LogInformation("Colección '{Col}' creada (size={Size}, distance={Distance}).", CollectionName, VectorSize, Distance);
 
-    public async Task<IReadOnlyList<ScoredIncident>> SearchSimilarAsync(string text, int limit)
+    public async Task<IReadOnlyList<ScoredIncident>> SearchSimilarAsync(string text, int limit, string? tipoAlerta = null)
     {
-        var hits = await Client.SearchAsync(CollectionName, embedder.Embed(text), limit);
+        var filter = new QdrantFilter().MatchValue("tipo_alerta", tipoAlerta);
+        var hits = await Client.SearchAsync(CollectionName, embedder.Embed(text), limit, filter);
         return hits.Select(h => new ScoredIncident(ToEntity(h), h.Score)).ToList();
     }
 
-    public async Task<bool> SaveIfAbsentAsync(Incident incident)
-    {
-        if (await GetByIdAsync(AssignId(incident)) is not null) return false;
-        await SaveAsync(incident);
-        return true;
-    }
+    public Task<Incident?> GetExistingAsync(Incident incident) => GetByIdAsync(AssignId(incident));
 
     public Task<IReadOnlyList<Incident>> FindAsync(IncidentFilter filter) =>
         FindAsync(new QdrantFilter()
