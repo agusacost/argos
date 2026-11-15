@@ -21,6 +21,9 @@ db.all(`select e.id, e.status, e.startedAt, e.stoppedAt, d.data from execution_e
       analysis: parsed?.analysis ?? null,
       llm: parsed ? `${parsed.llm_provider}/${parsed.llm_model}${parsed.fallback_used ? ' (fallback)' : ''}` : null,
       is_documented: parsed?.is_documented ?? null,
+      // Evidencia de logs que recibió el LLM (nodo 'Get Evidence') y por qué el RAG clasificó así.
+      evidence_lines: json('Build Prompt')?.evidence_lines ?? null,
+      match_reason: json('Build Prompt')?.match_reason ?? null,
     };
   });
   console.log(JSON.stringify(out));

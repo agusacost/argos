@@ -6,12 +6,14 @@ proceso manual de referencia**. Los resultados se vuelcan en [`docs/EVALUACION_O
 
 | Archivo | Para qué |
 |---|---|
-| `scenarios.json` | Catálogo de fallas F1–F7 con su causa raíz de referencia y lo que el RAG debería decir |
+| `scenarios.json` | Catálogo de fallas F1–F7 con su causa raíz de referencia, lo que el RAG debería decir y los `labels` por escenario (los que la regla real agrega: `evidence`, `instance`, `job`) |
 | `faults.ps1` | Inyecta/restaura una falla (o una al azar, sin mostrarla: **modo ciego**) |
 | `timer.ps1` | Cronómetro objetivo: registra startsAt/fin de cada alerta desde Alertmanager → `results/alerts.csv` |
 | `mark.ps1` | Hitos manuales de una corrida (start/diag/fix) → `results/runs.csv` |
 | `summarize-mttr.mjs` | Cruza todo y calcula MTTR, diagnóstico y tiempo hasta la propuesta por condición |
 | `run-llm-eval.mjs` | RAG + LLM por proveedor con los prompts reales del workflow → `results/llm-*.md/.csv` para puntuar |
+| `run-auto.mjs` | Corridas automáticas por falla (inyecta, espera la alerta, lee el análisis de n8n, aplica el arreglo, mide) → `results/auto-*.md/.csv` |
+| `n8n-analysis.cjs` | Lee de la SQLite de n8n el análisis, el LLM, `evidence_lines` y `match_reason` de cada ejecución (lo usa `run-auto.mjs`) |
 
 `results/` no se versiona.
 
@@ -21,11 +23,20 @@ proceso manual de referencia**. Los resultados se vuelcan en [`docs/EVALUACION_O
 node eval/run-llm-eval.mjs --rag-only          # matriz conocida/nueva + barrido de umbral (sin gastar LLM)
 node eval/run-llm-eval.mjs                     # + análisis (y doc si es nueva) con cada proveedor
 node eval/run-llm-eval.mjs --scenario F3 --providers groq,openrouter
+node eval/run-llm-eval.mjs --no-evidence       # sin evidencia de logs (comparar con el prompt anterior)
+node eval/run-llm-eval.mjs --evidence-at <ISO> # ventana de evidencia anclada en ese startsAt (default: ahora)
 ```
 
 El script ejecuta el código real de los nodos `Prepare`, `Build Prompt` y `Build Doc Prompt` del workflow y llama
 a `POST /internal/llm/generate` con `provider`/`model` (un solo proveedor, sin fallback ni aviso en la campana).
-Los proveedores sin API key se saltean.
+Los proveedores sin API key se saltean. El RAG se consulta con el `alertname` (señal por nombre, piso 0,30) y la tabla
+muestra el `match_reason`; la evidencia (`POST /internal/evidence`) solo tiene contenido con la falla inyectada y
+tráfico en curso (p. ej. `faults.ps1 -Scenario F2 -Action inject`); si no, sale vacía.
+El script manda los `labels` de cada escenario a `/internal/evidence` (como el nodo `Get Evidence`): con `evidence: nginx` la API
+infiere el contenedor desde Nginx y con `evidence: target` desde el `instance`; un escenario sin `labels` no trae evidencia.
+
+**Cuidado con `run-auto.mjs`:** descarta las alertas que empezaron antes de la inyección, así que las pruebas manuales
+que provocan 5xx (p. ej. detener la API a mano) contaminan la corrida.
 
 **Puntuar** el `.csv` (abre en Excel, separador `;`) leyendo el `.md`:
 

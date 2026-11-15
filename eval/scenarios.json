@@ -1,5 +1,5 @@
 {
-  "_comment": "Catálogo de fallas del OE3. 'root_cause' es la verdad de referencia para puntuar el diagnóstico; 'expected_kb' es lo que el RAG debería decir (known|new). Las anotaciones copian las reglas de Prometheus/Loki con valores de ejemplo en lugar de los templates.",
+  "_comment": "Catálogo de fallas del OE3. 'root_cause' es la verdad de referencia para puntuar el diagnóstico; 'expected_kb' es lo que el RAG debería decir (known|new). Las anotaciones copian las reglas de Prometheus/Loki con valores de ejemplo en lugar de los templates. 'labels' son los labels extra que la regla real agrega a la alerta (evidence, instance, job): la API los usa para elegir la evidencia de logs.",
   "scenarios": [
     {
       "id": "F1",
@@ -13,7 +13,10 @@
       "restore": "docker start membresia-api",
       "root_cause": "El contenedor upstream membresia-api está detenido: Nginx no puede conectarse al upstream y responde 502.",
       "fix": "docker start membresia-api",
-      "expected_kb": "known"
+      "expected_kb": "known",
+      "labels": {
+        "evidence": "nginx"
+      }
     },
     {
       "id": "F2",
@@ -27,7 +30,10 @@
       "restore": "docker start membresia-sqlserver",
       "root_cause": "La base de datos membresia-sqlserver está detenida: la API responde 500 al no poder abrir la conexión SQL.",
       "fix": "docker start membresia-sqlserver",
-      "expected_kb": "known"
+      "expected_kb": "known",
+      "labels": {
+        "evidence": "nginx"
+      }
     },
     {
       "id": "F3",
@@ -41,7 +47,12 @@
       "restore": "docker start node-exporter",
       "root_cause": "El contenedor node-exporter está detenido: Prometheus no puede scrapear las métricas del host (up == 0).",
       "fix": "docker start node-exporter",
-      "expected_kb": "known"
+      "expected_kb": "known",
+      "labels": {
+        "evidence": "target",
+        "instance": "node-exporter:9100",
+        "job": "node-exporter"
+      }
     },
     {
       "id": "F4",
@@ -56,7 +67,12 @@
       "root_cause": "El contenedor cadvisor está detenido: Prometheus no puede scrapear las métricas de contenedores (up == 0).",
       "fix": "docker start cadvisor",
       "expected_kb": "known",
-      "kb_note": "Era nueva hasta el 2026-10-27; se auto-documentó en la prueba de aprendizaje."
+      "kb_note": "Era nueva hasta el 2026-10-27; se auto-documentó en la prueba de aprendizaje.",
+      "labels": {
+        "evidence": "target",
+        "instance": "cadvisor:8080",
+        "job": "cadvisor"
+      }
     },
     {
       "id": "F5",
@@ -70,7 +86,10 @@
       "restore": "docker rm -f argos-eval-stress",
       "root_cause": "Un proceso/contenedor (argos-eval-stress) consume el 100% de la CPU del host.",
       "fix": "Identificar el contenedor con docker stats y detenerlo (docker rm -f argos-eval-stress)",
-      "expected_kb": "known"
+      "expected_kb": "known",
+      "labels": {
+        "instance": "node-exporter:9100"
+      }
     },
     {
       "id": "F6",
@@ -84,7 +103,10 @@
       "restore": "Esperar el fin de la corrida k6",
       "root_cause": "Una única IP (el generador k6) envía ráfagas de requests y paths inexistentes: patrón de scraping/ataque L7.",
       "fix": "Bloquear o limitar la IP en Nginx (deny / limit_req) y verificar el rate limit",
-      "expected_kb": "known"
+      "expected_kb": "known",
+      "labels": {
+        "evidence": "nginx"
+      }
     },
     {
       "id": "F7",
@@ -99,7 +121,12 @@
       "root_cause": "El contenedor nginx-prometheus-exporter está detenido (Nginx sigue sirviendo): up{job=nginx-exporter} == 0.",
       "fix": "docker start nginx-prometheus-exporter",
       "expected_kb": "known",
-      "kb_note": "Era nueva hasta el 2026-10-27; se auto-documentó en la prueba de aprendizaje (umbral 0.68)."
+      "kb_note": "Era nueva hasta el 2026-10-27; se auto-documentó en la prueba de aprendizaje (umbral 0.68).",
+      "labels": {
+        "evidence": "target",
+        "instance": "nginx-exporter:9113",
+        "job": "nginx-exporter"
+      }
     }
   ]
 }

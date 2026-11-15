@@ -50,7 +50,7 @@ Reglas de Loki (`docker/monitoring/loki/rules/fake/nginx-http.yml`), evaluadas p
   procesa el evento → RAG → LLM → síntesis/email).
 - **Auto-documentación**: NO se generó incidente nuevo (total se mantuvo en 21). Correcto: los tipos
   de alerta disparados (`NginxCriticalErrorRate`, `NginxErrorLogSpike`) ya tienen runbook en la base
-  de conocimiento (`argos-api/Argos.Api/knowledge/nginx-5xx.md`, `error-log-spike.md`), por lo que RAG los marca como
+  de conocimiento (`docker/monitoring/knowledge/nginx-5xx.md`, `error-log-spike.md`), por lo que RAG los marca como
   documentados y la rama de auto-doc (`Is New?`) no se activa. La auto-doc solo dispara ante
   incidentes no registrados.
 

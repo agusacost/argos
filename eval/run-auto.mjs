@@ -67,7 +67,8 @@ async function incidentFor(alertname, startsAt) {
     token ??= (await (await fetch(`${API}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'admin@argos.local', password: 'argos-admin-2026' }) })).json()).access_token;
     const { data } = await (await fetch(`${API}/incidents?tipo=${alertname}&size=100`, { headers: { Authorization: `Bearer ${token}` } })).json();
-    return data.find(i => i.detected_at && Math.abs(new Date(i.detected_at) - startsAt) < 60_000) ?? null;
+    // ?tipo= es coincidencia parcial (F-05): se exige el tipo exacto.
+    return data.find(i => i.tipo_alerta === alertname && i.detected_at && Math.abs(new Date(i.detected_at) - startsAt) < 60_000) ?? null;
   } catch { return null; }
 }
 
@@ -128,7 +129,8 @@ for (let round = 1; round <= rounds; round++) {
       `"${note.trim()}"`].join(';') + '\r\n', 'utf8');
     appendFileSync(mdPath, `## ${runId} · ${id} · ${sc.alertname}\n\n- Causa: ${sc.root_cause}\n- Arreglo esperado: \`docker start ${container}\`\n` +
       `- Propuesta: ejecución n8n #${exec?.id ?? '—'} · ${exec?.llm ?? '—'} · arreglo exacto: **${exec ? ev.correct : '—'}** · ` +
-      `menciona el contenedor: ${exec ? ev.mentions : '—'}\n- Estado en Argos: ${incident?.estado ?? '—'}\n\n` +
+      `menciona el contenedor: ${exec ? ev.mentions : '—'}\n` +
+      `- Evidencia de logs en el prompt: ${exec?.evidence_lines ?? '—'} líneas · RAG: ${exec?.match_reason ?? '—'}\n- Estado en Argos: ${incident?.estado ?? '—'}\n\n` +
       `${exec?.analysis ?? '_sin análisis_'}\n\n`, 'utf8');
 
     // 7. Enfriamiento: que Alertmanager cierre el grupo y no queden alertas críticas activas
