@@ -1,0 +1,170 @@
+# Integración continua de Argos: valida y compila lo que contiene el repositorio.
+# Es CI, no CD: no despliega nada. El despliegue en AWS es manual con Terraform
+# (terraform/environments/aws, ver README).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: Terraform (fmt + validate)
+    runs-on: ubuntu-latest
+    env:
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
+      TF_IN_AUTOMATION: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.8
+          terraform_wrapper: false
+
+      - name: Caché de providers
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: terraform-${{ runner.os }}-${{ hashFiles('terraform/**/*.tf') }}
+          restore-keys: terraform-${{ runner.os }}-
+
+      - run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
+      - name: terraform fmt
+        run: terraform -chdir=terraform fmt -check -recursive -diff
+
+      - name: terraform validate (localstack y aws)
+        run: |
+          for env in localstack aws; do
+            echo "::group::$env"
+            terraform -chdir="terraform/environments/$env" init -backend=false -input=false
+            terraform -chdir="terraform/environments/$env" validate
+            echo "::endgroup::"
+          done
+
+  observability-config:
+    name: Reglas y configuración de observabilidad
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prometheus (config + reglas)
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/docker/monitoring/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v2.54.1 check config /etc/prometheus/prometheus.yml
+          docker run --rm --entrypoint sh \
+            -v "$PWD/docker/monitoring/prometheus/rules:/rules:ro" \
+            prom/prometheus:v2.54.1 -c 'promtool check rules /rules/*.yml'
+
+      # Los placeholders REPLACE_WITH_* de los receivers de email son strings válidos: no hacen falta secretos.
+      - name: Alertmanager
+        run: |
+          docker run --rm --entrypoint amtool \
+            -v "$PWD/docker/monitoring/alertmanager:/etc/alertmanager:ro" \
+            prom/alertmanager:v0.27.0 check-config /etc/alertmanager/alertmanager.yml
+
+      - name: Alloy (sintaxis + arranque del grafo de componentes)
+        run: |
+          docker run --rm -v "$PWD/docker/proxy/alloy:/cfg:ro" grafana/alloy:v1.4.3 fmt /cfg/config.alloy > /dev/null
+          docker run -d --name alloy-ci \
+            -v "$PWD/docker/proxy/alloy/config.alloy:/etc/alloy/config.alloy:ro" \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            grafana/alloy:v1.4.3 run --storage.path=/tmp/alloy /etc/alloy/config.alloy
+          sleep 15
+          running="$(docker inspect -f '{{.State.Running}}' alloy-ci)"
+          docker logs alloy-ci > alloy.log 2>&1
+          docker rm -f alloy-ci > /dev/null
+          # Sin Loki en CI los envíos fallan en runtime (esperado); lo que no debe fallar es armar el grafo.
+          if [ "$running" != "true" ] || grep -E "Failed to build component|failed to evaluate config" alloy.log; then
+            cat alloy.log
+            exit 1
+          fi
+
+      - name: Workflow de n8n (JSON válido)
+        run: jq empty docker/monitoring/n8n/workflows/*.json
+
+  compose:
+    name: Docker Compose (config)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config
+        run: |
+          cp docker/monitoring/.env.example docker/monitoring/.env
+          docker compose config --quiet
+
+  argos-api:
+    name: Argos API (.NET 10, build + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: argos-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Caché de NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-argos-${{ runner.os }}-${{ hashFiles('argos-api/**/*.csproj', 'argos-api/Directory.Build.props') }}
+          restore-keys: nuget-argos-${{ runner.os }}-
+
+      - run: dotnet restore Argos.slnx
+      - run: dotnet build Argos.slnx -c Release --no-restore
+      # Sin argumentos: toma Argos.slnx del directorio. Corre los proyectos de test que la solución
+      # tenga (p. ej. Argos.Tests); si no tiene ninguno, termina en verde sin ejecutar tests.
+      - run: dotnet test -c Release --no-build
+
+  membresia-api:
+    name: MembresiaAPI (.NET 10, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Caché de NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-membresia-${{ runner.os }}-${{ hashFiles('docker/apps/api/MembresiaAPI/*.csproj') }}
+          restore-keys: nuget-membresia-${{ runner.os }}-
+
+      # El .csproj y no MembresiaAPI.slnx: la solución incluye el proyecto SQL (.sqlproj), que necesita SSDT.
+      - run: dotnet build docker/apps/api/MembresiaAPI/MembresiaAPI.csproj -c Release
+
+  dashboard:
+    name: Panel (Next.js, build estático)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package.json
+
+      # npm install y no npm ci: package-lock.json está en .gitignore (igual que el Dockerfile del panel).
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
