@@ -1,19 +1,23 @@
+# Idéntico en environments/localstack y environments/aws.
+
 output "instance_id" {
-  value = aws_instance.observability.id
+  value = module.argos_node.instance_id
 }
 
-output "instance_private_ip" {
-  value = aws_instance.observability.private_ip
+output "public_ip" {
+  value = module.argos_node.public_ip
 }
 
-output "grafana_url" {
-  value = "http://localhost:3000"
+output "urls" {
+  value = module.argos_node.urls
 }
 
-output "prometheus_url" {
-  value = "http://localhost:9090"
+output "ssh_command" {
+  value = module.argos_node.ssh_command
 }
 
-output "loki_url" {
-  value = "http://localhost:3100"
+output "argos_admin_password" {
+  description = "terraform output -raw argos_admin_password"
+  value       = module.argos_node.argos_admin_password
+  sensitive   = true
 }

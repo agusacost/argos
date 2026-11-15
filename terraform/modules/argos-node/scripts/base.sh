@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Provisioning base del nodo Argos (Ubuntu): Docker Engine + Compose plugin + git.
+# Lo ejecuta cloud-init como primera parte del user_data (módulo argos-node, bootstrap.tf).
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -17,6 +19,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends \
   ca-certificates \
   curl \
+  git \
   gnupg \
   lsb-release \
   apt-transport-https \

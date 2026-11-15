@@ -1,0 +1,17 @@
+# Copiar como terraform.tfvars (ignorado por git) y ajustar.
+# LocalStack no valida nada de esto contra AWS real: sirve para ejercitar el mismo módulo que environments/aws.
+
+# AMI: LocalStack no tiene las AMIs públicas actuales de Canonical (por eso no se puede usar la búsqueda
+# automática de Ubuntu 24.04 que hace environments/aws) y rechaza los IDs que no estén en su catálogo
+# (InvalidAMIID.NotFound). ami-785db401 es una Ubuntu 16.04 que LocalStack 3.x trae precargada. La versión
+# no importa: la instancia es simulada y el user_data no se ejecuta. Para ver el catálogo:
+#   aws --endpoint-url http://localhost:4566 ec2 describe-images --filters "Name=name,Values=*ubuntu*"
+ami_id = "ami-785db401"
+
+instance_type     = "t3.xlarge"
+admin_cidr_blocks = ["127.0.0.1/32"]
+
+# Opcional: levantar el stack con el Docker local después del apply (ver localstack.tf).
+# deploy_local_stack = true
+
+# argos_env: con LocalStack no se usa (el user_data no se ejecuta). Puede quedar vacío.

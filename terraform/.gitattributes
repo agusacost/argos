@@ -1,0 +1,3 @@
+# Scripts que se ejecutan en Linux (user_data de la VM): siempre LF, aunque core.autocrlf=true.
+*.sh    text eol=lf
+*.tftpl text eol=lf
