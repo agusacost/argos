@@ -31,9 +31,33 @@ function qs(params: Record<string, string | number | undefined>): string {
   return s ? `?${s}` : "";
 }
 
+/** Error de la API con el código HTTP; `message` es el `detail` del backend cuando lo hay. */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+const FALLBACK_BY_STATUS: Record<number, string> = {
+  403: 'Tu usuario no tiene permisos para esta acción.',
+  502: 'El servicio respondió con un error. Se puede reintentar en unos instantes.',
+  503: 'El servicio no está disponible en este momento. Se puede reintentar en unos instantes.',
+  504: 'El servicio tardó demasiado en responder. Se puede reintentar en unos instantes.',
+};
+
+/** Arma el error de una respuesta no exitosa: prioriza `{ "detail": "..." }` de la API. */
+async function errorFrom(res: Response): Promise<ApiError> {
+  const body = await res.json().catch(() => null) as { detail?: unknown } | null;
+  const detail = typeof body?.detail === 'string' && body.detail.trim() ? body.detail.trim() : null;
+  return new ApiError(res.status, detail ?? FALLBACK_BY_STATUS[res.status] ?? `${res.status} ${res.statusText}`);
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: authHeader() });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;
 }
 
@@ -43,10 +67,7 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
     headers: { "Content-Type": "application/json", ...authHeader() },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => ({})) as { detail?: string };
-    throw new Error(detail.detail ?? `${res.status} ${res.statusText}`);
-  }
+  if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;
 }
 
@@ -56,10 +77,7 @@ async function patchJson<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json", ...authHeader() },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => ({})) as { detail?: string };
-    throw new Error(detail.detail ?? `${res.status} ${res.statusText}`);
-  }
+  if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;
 }
 
@@ -68,7 +86,7 @@ async function delJson(path: string): Promise<void> {
     method: "DELETE",
     headers: authHeader(),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw await errorFrom(res);
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -105,6 +123,19 @@ export const listIncidents = (p: ListParams = {}) =>
 
 export const listKnowledgeBase = (p: { page?: number; size?: number; search?: string } = {}) =>
   getJson<Paginated<IncidentSummary>>(`/incidents/knowledge-base${qs({ ...p })}`);
+
+export interface NewKnowledgeDocBody {
+  tipo_alerta: string;
+  resumen: string;
+  pasos: string[];
+  /** Cuerpo en Markdown (opcional si hay pasos). */
+  documento?: string;
+  severity?: "warning" | "critical";
+}
+
+/** Solo Administrador. 201 con el incidente creado; 422 con `detail` si faltan datos. */
+export const createKnowledgeDoc = (body: NewKnowledgeDocBody) =>
+  postJson<IncidentDetail>("/incidents/knowledge-base", body);
 
 export const getIncident = (id: string) => getJson<IncidentDetail>(`/incidents/${id}`);
 
@@ -217,6 +248,11 @@ export interface Settings {
   polling_interval_seconds: number;
   /** Pool de destinatarios del email de alertas (n8n). Vacío → fallback ALERT_RECIPIENT_EMAIL. */
   alert_recipients: string[];
+  /**
+   * Descripción del entorno monitoreado que acompaña a los prompts. La escribe quien opera el servicio; si nunca se
+   * editó, el servidor devuelve el valor del despliegue (ARGOS_ENVIRONMENT_CONTEXT). "" = vacía a propósito.
+   */
+  environment_context?: string | null;
   /** Solo lectura (no se persiste): qué API keys de LLM están cargadas en el servidor. */
   llm_keys?: Record<string, boolean>;
   /** Solo en la respuesta del PATCH: aviso no bloqueante (p. ej. modelo no encontrado). */

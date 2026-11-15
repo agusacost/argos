@@ -65,14 +65,44 @@ test.describe('Admin', () => {
     expect((await getSettings()).llm_model).toBe(before.llm_model);
   });
 
-  test('C-01 modelo que no corresponde al proveedor → error o aviso', async ({ page }) => {
-    await card(page, 'Modelo de IA').locator('input[type=text]').fill('modelo-sin-prefijo-e2e');
+  test('C-01 modelo que no corresponde al proveedor → 422 con el motivo visible y sin estado engañoso', async ({ page }) => {
+    const before = await getSettings();
+    const modelInput = card(page, 'Modelo de IA').locator('input[type=text]');
+    await modelInput.fill('modelo-sin-prefijo-e2e');
     const res = page.waitForResponse((r) => r.url().endsWith('/api/settings') && r.request().method() === 'PATCH');
     await saveButton(page).click();
     const r = await res;
-    const body = r.ok() ? await r.json() : null;
-    // Se acepta 422 o un 200 con `warning`; un 200 silencioso deja guardado un modelo que nunca se usa.
-    expect(r.status() === 422 || Boolean(body?.warning), 'se guardó sin feedback').toBe(true);
+    expect(r.status(), 'el backend debe rechazar un modelo ajeno al proveedor').toBe(422);
+    const { detail } = (await r.json()) as { detail: string };
+    expect(detail.length).toBeGreaterThan(0);
+
+    // El motivo del backend se muestra, y se aclara que lo que se ve en el formulario NO quedó aplicado.
+    const alerta = page.getByRole('alert').filter({ hasText: 'No se guardó la configuración' });
+    await expect(alerta).toContainText(detail.replace(/[.\s]+$/, ''));
+    await expect(page.getByText('Guardado correctamente')).toHaveCount(0);
+    expect((await getSettings()).llm_model).toBe(before.llm_model);
+
+    // «Descartar cambios» vuelve el formulario a lo que realmente está vigente.
+    await alerta.getByRole('button', { name: 'Descartar cambios' }).click();
+    await expect(alerta).toHaveCount(0);
+    await expect(modelInput).toHaveValue(before.llm_model);
+  });
+
+  test('C-01 un error al guardar (aunque no sea 422) se muestra con el motivo y se puede descartar', async ({ page }) => {
+    await page.route('**/api/settings', (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback();
+      return route.fulfill({
+        status: 422,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Detalle simulado de configuración inválida.' }),
+      });
+    });
+    await card(page, 'Refresco automático').locator('input[type=range]').fill('45');
+    await saveButton(page).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'No se guardó' })).toContainText(
+      'No se guardó la configuración: Detalle simulado de configuración inválida',
+    );
+    await expect(saveButton(page)).toBeEnabled();
   });
 
   test('C-04 pool de destinatarios: validaciones, agregar y quitar', async ({ page }) => {
@@ -103,6 +133,31 @@ test.describe('Admin', () => {
     await saveButton(page).click();
     await expect(page.getByText('Guardado correctamente')).toBeVisible();
     expect((await getSettings()).alert_recipients).not.toContain('e2e-pool@example.com');
+  });
+
+  test('C-08 contexto del entorno: se guarda, persiste y llega al contador', async ({ page }) => {
+    const texto = `Entorno E2E ${Date.now()}: un host con Docker Compose; servicio app-api detrás de Nginx.`;
+    const campo = page.getByLabel(/Contexto del entorno/);
+    await campo.fill(texto);
+    await expect(page.getByText(`Contexto del entorno — ${texto.length}/3000`)).toBeVisible();
+    await saveButton(page).click();
+    await expect(page.getByText('Guardado correctamente')).toBeVisible();
+    expect((await getSettings()).environment_context).toBe(texto);
+
+    await page.reload();
+    await goToView(page, 'settings');
+    await expect(page.getByLabel(/Contexto del entorno/)).toHaveValue(texto);
+  });
+
+  test('C-08 contexto del entorno: más de 3000 caracteres → 422 y no se persiste', async ({ page }) => {
+    await expect(page.getByLabel(/Contexto del entorno/)).toHaveAttribute('maxlength', '3000');
+    const before = await getSettings();
+    const api = await apiAs(await login(ADMIN.email, ADMIN.password));
+    const res = await api.patch('settings', { data: { environment_context: 'x'.repeat(3001) } });
+    expect(res.status()).toBe(422);
+    expect(((await res.json()) as { detail: string }).detail.length).toBeGreaterThan(0);
+    await api.dispose();
+    expect((await getSettings()).environment_context).toBe(before.environment_context);
   });
 
   test('C-05 integraciones en vivo: todas up', async ({ page }) => {
@@ -139,5 +194,6 @@ test.describe('Operador', () => {
     await expect(page.locator('main select')).toBeDisabled();
     for (const r of await page.locator('main input[type=range]').all()) await expect(r).toBeDisabled();
     await expect(page.getByPlaceholder('oncall@empresa.com')).toHaveCount(0);
+    await expect(page.getByLabel(/Contexto del entorno/)).toBeDisabled();
   });
 });

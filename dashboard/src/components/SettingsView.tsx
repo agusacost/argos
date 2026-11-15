@@ -8,6 +8,7 @@ import { useApp } from '@/types';
 import { PROVIDER_LABEL } from '@/llmStatus';
 
 const MAX_RECIPIENTS = 50;
+const MAX_ENVIRONMENT_CONTEXT = 3000; // mismo tope que SettingsValidator.MaxEnvironmentContextChars
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const DEFAULT_MODEL: Record<string, string> = {
   gemini: 'gemini-flash-lite-latest',
@@ -48,6 +49,8 @@ export function SettingsView() {
   const [checkingLlm, setCheckingLlm] = useState(false);
   const [llmCheckError, setLlmCheckError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
+  // Última configuración que el servidor confirmó: permite descartar un intento rechazado (p. ej. 422).
+  const [persisted, setPersisted] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -60,7 +63,7 @@ export function SettingsView() {
 
   useEffect(() => {
     getSettings()
-      .then(setSettings)
+      .then((s) => { setSettings(s); setPersisted(s); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
@@ -103,18 +106,26 @@ export function SettingsView() {
     try {
       const updated = await updateSettings(settings);
       setSettings(updated);
+      setPersisted(updated);
       setPollingSeconds(updated.polling_interval_seconds);
       if (updated.warning) setWarning(updated.warning);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al guardar');
+      setError(e instanceof Error ? e.message.trim().replace(/[.\s]+$/, '') : 'error desconocido');
     } finally {
       setSaving(false);
     }
   };
 
   const isAdmin = user?.role === 'Admin';
+
+  const discardChanges = () => {
+    if (persisted) setSettings(persisted);
+    setError(null);
+    setWarning(null);
+    setRecipientError(null);
+  };
 
   const addRecipient = () => {
     const email = newRecipient.trim().toLowerCase();
@@ -188,8 +199,8 @@ export function SettingsView() {
               placeholder={DEFAULT_MODEL[settings.llm_provider] ?? 'gemini-flash-latest'}
             />
             <p className="text-[10px] text-slate-600 mt-1">
-              Se usa para el análisis de cada alerta (n8n) y para «Generar documentación». Si el modelo no
-              corresponde al proveedor, se usa el default del servidor.
+              Se usa para el análisis de cada alerta (n8n) y para «Generar documentación». Debe corresponder
+              al proveedor elegido: si no, el servidor rechaza el cambio y se muestra el motivo.
             </p>
           </div>
         </div>
@@ -302,6 +313,27 @@ export function SettingsView() {
             >
               <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${settings.auto_doc_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
+          </div>
+          <div>
+            <label htmlFor="environment-context" className="block text-xs font-medium text-slate-400 mb-1.5">
+              Contexto del entorno — {(settings.environment_context ?? '').length}/{MAX_ENVIRONMENT_CONTEXT}
+            </label>
+            <textarea
+              id="environment-context"
+              disabled={!isAdmin}
+              rows={5}
+              maxLength={MAX_ENVIRONMENT_CONTEXT}
+              value={settings.environment_context ?? ''}
+              onChange={(e) => setSettings((s) => s ? { ...s, environment_context: e.target.value } : s)}
+              placeholder="Ej.: un host con Docker Compose, sin Kubernetes. Servicio: app-api (upstream de Nginx) y app-db."
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 disabled:opacity-60"
+            />
+            <p className="text-[10px] text-slate-600 mt-1">
+              Cómo está armado el servicio que Argos observa (contenedores, puertos, cómo se opera). Lo escribe quien lo
+              opera: Argos no lo conoce y lo agrega a los prompts del análisis y de la documentación para que los
+              comandos usen los nombres reales. Vacío, el modelo solo usa los nombres que aparezcan en la evidencia y
+              en los incidentes históricos.
+            </p>
           </div>
         </div>
       </div>
@@ -453,19 +485,30 @@ export function SettingsView() {
       </div>
 
       {isAdmin && (
-        <div className="flex items-center gap-3">
+        <div className="sticky bottom-0 -mx-1 px-1 py-3 bg-[#0a0e14]/95 backdrop-blur-sm flex items-center gap-3 flex-wrap">
           {error != null && (
-            <div className="flex items-center gap-2 text-xs text-red-400">
-              <AlertCircle className="w-3.5 h-3.5" /> {error}
+            <div role="alert" className="flex items-center gap-2 text-xs text-red-400 min-w-0">
+              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>
+                No se guardó la configuración: {error}. Los valores del formulario no están aplicados;
+                la configuración vigente sigue siendo la anterior.
+              </span>
+              <button
+                type="button"
+                onClick={discardChanges}
+                className="flex-shrink-0 underline underline-offset-2 text-slate-300 hover:text-white"
+              >
+                Descartar cambios
+              </button>
             </div>
           )}
           {warning != null && (
-            <div className="flex items-center gap-2 text-xs text-amber-400">
+            <div role="status" className="flex items-center gap-2 text-xs text-amber-400">
               <AlertCircle className="w-3.5 h-3.5" /> {warning}
             </div>
           )}
           {saved && (
-            <div className="flex items-center gap-2 text-xs text-emerald-400">
+            <div role="status" className="flex items-center gap-2 text-xs text-emerald-400">
               <CheckCircle2 className="w-3.5 h-3.5" /> Guardado correctamente
             </div>
           )}

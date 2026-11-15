@@ -115,8 +115,11 @@ export interface AppContextType {
   /** Cadena LLM (principal + respaldo) según las últimas llamadas reales. */
   llmHealth: LlmHealth[];
   setLlmHealth: (h: LlmHealth[]) => void;
+  /** Rechaza con el motivo del backend si falla; el panel de detalle lo muestra. */
   resolveIncident: (id: string) => Promise<void>;
   documentIncident: (id: string) => Promise<void>;
+  /** Cambia tras cada alta/modificación hecha desde el panel: las listas con estado propio recargan. */
+  incidentsVersion: number;
   refreshIncidents: () => void;
   /** Intervalo de polling (Configuración → Refresco automático); se aplica en vivo al guardar. */
   pollingSeconds: number;

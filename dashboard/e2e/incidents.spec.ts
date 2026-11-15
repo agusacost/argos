@@ -41,8 +41,11 @@ test.describe('Admin', () => {
     for (let i = 0; i < n; i++) await expect(rows(page).nth(i)).toContainText('Resuelto');
   });
 
-  test('I-04 filtro por tipo', async ({ page }) => {
-    await page.getByPlaceholder('Filtrar por tipo…').fill('Nginx');
+  test('I-04 filtro por tipo: coincidencia parcial y sin distinguir mayúsculas', async ({ page }) => {
+    // El texto de ayuda de la vista describe la coincidencia parcial.
+    await expect(page.getByText('coincide con cualquier parte del nombre', { exact: false })).toBeVisible();
+    // «gInX» (parcial, mayúsculas mezcladas) debe encontrar NginxDown, NginxHighErrorRate, etc.
+    await page.getByPlaceholder('Filtrar por tipo…').fill('gInX');
     await expect(page.getByText('Cargando incidentes…')).toHaveCount(0);
     const n = await rows(page).count();
     expect(n).toBeGreaterThan(0);
@@ -96,7 +99,66 @@ test.describe('Admin', () => {
     }
   });
 
-  test('I-07 @llm aprobar y auto-documentar con el LLM', async ({ page }) => {
+  /** Abre el detalle de un incidente que todavía muestra las acciones (nuevo o pendiente). */
+  async function openActionableIncident(page: Page): Promise<string> {
+    const api = await adminApi();
+    let inc = (await (await api.get('incidents?estado=pendiente&size=1')).json()).data[0];
+    let estado = 'pendiente';
+    if (!inc) {
+      inc = (await (await api.get('incidents?estado=nuevo&size=1')).json()).data[0];
+      estado = 'nuevo';
+    }
+    await api.dispose();
+    test.skip(!inc, 'no hay incidentes nuevos ni pendientes');
+    await page.locator('main select').selectOption(estado);
+    await rows(page).filter({ hasText: inc.id.slice(0, 8) }).click();
+    await expect(drawer(page).getByRole('button', { name: 'Marcar como Resuelto' })).toBeVisible();
+    return inc.id as string;
+  }
+
+  test('I-07 un error al documentar con IA se muestra en el panel (que sigue abierto) y se puede reintentar', async ({ page }) => {
+    const id = await openActionableIncident(page);
+    let calls = 0;
+    await page.route(`**/api/incidents/${id}/document`, (route) => {
+      calls++;
+      return route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'El proveedor de IA respondió 503 (alta demanda).' }),
+      });
+    });
+    const boton = drawer(page).getByRole('button', { name: /Aprobar y Auto-documentar/ });
+    await boton.click();
+    const alerta = drawer(page).getByRole('alert');
+    await expect(alerta).toContainText('No se pudo generar la documentación: El proveedor de IA respondió 503');
+    await expect(alerta).toContainText('se puede reintentar');
+    // El panel no se cerró y el botón volvió a estar disponible.
+    await expect(drawer(page)).toBeVisible();
+    await expect(boton).toBeEnabled();
+    await boton.click();
+    await expect.poll(() => calls).toBe(2);
+    await expect(alerta).toBeVisible();
+  });
+
+  test('I-06 un error al marcar como resuelto se muestra en el panel y el incidente no cambia', async ({ page }) => {
+    const id = await openActionableIncident(page);
+    await page.route(`**/api/incidents/${id}`, (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback();
+      return route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'No se pudo guardar el cambio en Qdrant.' }),
+      });
+    });
+    await drawer(page).getByRole('button', { name: 'Marcar como Resuelto' }).click();
+    await expect(drawer(page).getByRole('alert')).toContainText(
+      'No se pudo marcar el incidente como resuelto: No se pudo guardar el cambio en Qdrant',
+    );
+    await expect(drawer(page)).toBeVisible();
+    await expect(drawer(page).getByRole('button', { name: 'Marcar como Resuelto' })).toBeEnabled();
+  });
+
+  test('I-07 @llm aprobar y auto-documentar con el LLM (éxito, o motivo visible si el proveedor falla)', async ({ page }) => {
     test.setTimeout(180_000);
     const api = await adminApi();
     const nuevo = (await (await api.get('incidents?estado=nuevo&size=1')).json()).data[0];
@@ -107,6 +169,13 @@ test.describe('Admin', () => {
       const done = page.waitForResponse((r) => r.url().includes(`/incidents/${nuevo.id}/document`), { timeout: 150_000 });
       await drawer(page).getByRole('button', { name: /Aprobar y Auto-documentar/ }).click();
       const res = await done;
+      if (res.status() >= 500) {
+        // El proveedor de IA puede estar saturado (503 → 502): el operador debe ver el motivo y poder reintentar.
+        await expect(drawer(page).getByRole('alert')).toContainText('No se pudo generar la documentación');
+        await expect(drawer(page).getByRole('button', { name: /Aprobar y Auto-documentar/ })).toBeEnabled();
+        test.info().annotations.push({ type: 'proveedor-ia', description: `HTTP ${res.status()}: ${await res.text()}` });
+        return;
+      }
       expect(res.status(), await res.text()).toBe(200);
       const inc = await (await api.get(`incidents/${nuevo.id}`)).json();
       expect(inc.estado).toBe('auto_documentado');

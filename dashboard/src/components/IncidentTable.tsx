@@ -146,8 +146,17 @@ interface DrawerContentProps {
   vm: IncidentVM;
   canApprove: boolean;
   onClose: () => void;
-  onResolve: () => void;
-  onDocument: () => void;
+  onResolve: () => Promise<void>;
+  onDocument: () => Promise<void>;
+}
+
+const KB_ESTADOS = ['documentado_previamente', 'auto_documentado'];
+
+/** Mensaje legible para el operador a partir del error de una acción (motivo del backend o de red). */
+function actionErrorMessage(e: unknown): string {
+  if (e instanceof TypeError) return 'no se pudo contactar con el servidor';
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.trim().replace(/[.\s]+$/, '');
 }
 
 function DrawerContent({ vm, canApprove, onClose, onResolve, onDocument }: DrawerContentProps) {
@@ -159,7 +168,8 @@ function DrawerContent({ vm, canApprove, onClose, onResolve, onDocument }: Drawe
 
   const [observability, setObservability] = useState<IncidentObservability | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
-  const [documenting, setDocumenting] = useState(false);
+  const [pending, setPending] = useState<'document' | 'resolve' | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     setObservability(null);
@@ -168,10 +178,21 @@ function DrawerContent({ vm, canApprove, onClose, onResolve, onDocument }: Drawe
     void getIncidentAudit(vm.id).then(setAudit).catch(() => setAudit([]));
   }, [vm.id]);
 
-  const handleDocument = () => {
-    setDocumenting(true);
-    onDocument();
+  // Con éxito el panel se cierra solo (lo hace el contexto); con error queda abierto con el motivo.
+  const runAction = async (kind: 'document' | 'resolve', action: () => Promise<void>, failure: string) => {
+    setPending(kind);
+    setActionError(null);
+    try {
+      await action();
+    } catch (e: unknown) {
+      setActionError(`${failure}: ${actionErrorMessage(e)}. El incidente no se modificó; se puede reintentar.`);
+      setPending(null);
+    }
   };
+  const handleDocument = () => runAction('document', onDocument, 'No se pudo generar la documentación');
+  const handleResolve = () => runAction('resolve', onResolve, 'No se pudo marcar el incidente como resuelto');
+  const documenting = pending === 'document';
+  const resolving = pending === 'resolve';
 
   return (
     <>
@@ -193,7 +214,7 @@ function DrawerContent({ vm, canApprove, onClose, onResolve, onDocument }: Drawe
             <h2 className="text-base font-semibold text-white">{vm.title}</h2>
             <p className="text-xs text-slate-500 mt-1">{vm.component} · {formatTime(vm.timestamp)}</p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white p-1 -mr-1 flex-shrink-0">
+          <button onClick={onClose} aria-label="Cerrar panel" className="text-slate-500 hover:text-white p-1 -mr-1 flex-shrink-0">
             <ChevronRight className="w-5 h-5 rotate-180" />
           </button>
         </div>
@@ -296,17 +317,31 @@ function DrawerContent({ vm, canApprove, onClose, onResolve, onDocument }: Drawe
           </div>
         </section>
 
-        {/* Document (real markdown from backend) */}
-        {vm.documento && (
+        {/* Documento (markdown real del backend); sin cuerpo, los pasos registrados */}
+        {vm.documento ? (
           <section>
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Documentación Auto-generada</h3>
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+              {vm.estado === 'documentado_previamente' ? 'Documentación del Runbook' : 'Documentación Auto-generada'}
+            </h3>
             <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-5 prose prose-invert prose-sm max-w-none
               prose-headings:text-slate-200 prose-p:text-slate-400 prose-li:text-slate-400
               prose-code:bg-slate-900 prose-code:px-1 prose-code:rounded prose-pre:bg-slate-900">
               <ReactMarkdown>{vm.documento}</ReactMarkdown>
             </div>
           </section>
-        )}
+        ) : KB_ESTADOS.includes(vm.estado) && vm.pasos && vm.pasos.length > 0 ? (
+          <section>
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Documentación del Runbook</h3>
+            <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-5 prose prose-invert prose-sm max-w-none
+              prose-headings:text-slate-200 prose-p:text-slate-400 prose-li:text-slate-400">
+              <h3>Pasos de resolución</h3>
+              <ol>
+                {vm.pasos.map((paso, i) => <li key={i}>{paso}</li>)}
+              </ol>
+              <p className="text-xs">Este documento no tiene texto en Markdown; se muestran los pasos registrados.</p>
+            </div>
+          </section>
+        ) : null}
 
         {/* Audit trail — real */}
         <section>
@@ -364,43 +399,57 @@ function DrawerContent({ vm, canApprove, onClose, onResolve, onDocument }: Drawe
         )}
 
         {/* Action Buttons */}
-        <section className="sticky bottom-0 bg-[#0d1117] -mx-6 px-6 py-4 border-t border-slate-800 flex gap-3">
-          {vm.status !== 'resolved' && vm.status !== 'documented' && (
-            <>
-              {canApprove && (
+        <section className="sticky bottom-0 bg-[#0d1117] -mx-6 px-6 py-4 border-t border-slate-800 flex flex-col gap-3">
+          {actionError != null && (
+            <div role="alert" className="flex items-start gap-2 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2.5">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <span>{actionError}</span>
+            </div>
+          )}
+          <div className="flex gap-3">
+            {vm.status !== 'resolved' && vm.status !== 'documented' && (
+              <>
+                {canApprove && (
+                  <button
+                    onClick={() => { void handleDocument(); }}
+                    disabled={pending !== null}
+                    className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-sm font-medium py-2.5 rounded-lg transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 disabled:opacity-70"
+                  >
+                    {documenting ? (
+                      <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generando doc…</>
+                    ) : (
+                      <><FileCheck2 className="w-4 h-4" /> Aprobar y Auto-documentar</>
+                    )}
+                  </button>
+                )}
                 <button
-                  onClick={handleDocument}
-                  disabled={documenting}
-                  className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-sm font-medium py-2.5 rounded-lg transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 disabled:opacity-70"
+                  onClick={() => { void handleResolve(); }}
+                  disabled={pending !== null}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 border border-slate-700 disabled:opacity-70"
                 >
-                  {documenting ? (
-                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generando doc…</>
+                  {resolving ? (
+                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Resolviendo…</>
                   ) : (
-                    <><FileCheck2 className="w-4 h-4" /> Aprobar y Auto-documentar</>
+                    <><CheckCircle2 className="w-4 h-4" /> Marcar como Resuelto</>
                   )}
                 </button>
-              )}
-              <button
-                onClick={onResolve}
-                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 border border-slate-700"
-              >
+              </>
+            )}
+            {vm.status === 'resolved' && (
+              <div className="flex-1 flex items-center justify-center gap-2 text-sm text-emerald-400 bg-emerald-500/5 border border-emerald-500/20 py-2.5 rounded-lg">
                 <CheckCircle2 className="w-4 h-4" />
-                Marcar como Resuelto
-              </button>
-            </>
-          )}
-          {vm.status === 'resolved' && (
-            <div className="flex-1 flex items-center justify-center gap-2 text-sm text-emerald-400 bg-emerald-500/5 border border-emerald-500/20 py-2.5 rounded-lg">
-              <CheckCircle2 className="w-4 h-4" />
-              Incidente resuelto
-            </div>
-          )}
-          {vm.status === 'documented' && (
-            <div className="flex-1 flex items-center justify-center gap-2 text-sm text-violet-300 bg-violet-500/5 border border-violet-500/20 py-2.5 rounded-lg">
-              <FileCheck2 className="w-4 h-4" />
-              Auto-documentado en base de conocimiento
-            </div>
-          )}
+                Incidente resuelto
+              </div>
+            )}
+            {vm.status === 'documented' && (
+              <div className="flex-1 flex items-center justify-center gap-2 text-sm text-violet-300 bg-violet-500/5 border border-violet-500/20 py-2.5 rounded-lg">
+                <FileCheck2 className="w-4 h-4" />
+                {vm.estado === 'documentado_previamente'
+                  ? 'Runbook documentado en la base de conocimiento'
+                  : 'Auto-documentado en base de conocimiento'}
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </>
@@ -440,7 +489,7 @@ export function IncidentDetailDrawer() {
         className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 animate-fade-in"
         onClick={() => setSelectedIncidentId(null)}
       />
-      <div className="fixed right-0 top-0 bottom-0 w-full max-w-xl bg-[#0d1117] border-l border-slate-800 z-50 overflow-y-auto animate-slide-in-right">
+      <div role="dialog" aria-modal="true" aria-label="Detalle del incidente" className="fixed right-0 top-0 bottom-0 w-full max-w-xl bg-[#0d1117] border-l border-slate-800 z-50 overflow-y-auto animate-slide-in-right">
         {loading && (
           <div className="flex items-center justify-center h-full">
             <span className="text-slate-500">Cargando incidente…</span>
@@ -459,11 +508,12 @@ export function IncidentDetailDrawer() {
         )}
         {!loading && !fetchError && vm && (
           <DrawerContent
+            key={vm.id}
             vm={vm}
             canApprove={canApprove ?? false}
             onClose={() => setSelectedIncidentId(null)}
-            onResolve={() => { void resolveIncident(vm.id); }}
-            onDocument={() => { void documentIncident(vm.id); }}
+            onResolve={() => resolveIncident(vm.id)}
+            onDocument={() => documentIncident(vm.id)}
           />
         )}
       </div>

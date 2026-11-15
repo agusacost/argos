@@ -35,6 +35,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [llmHealth, setLlmHealth] = useState<LlmHealth[]>([]);
   const [pollingSeconds, setPollingSeconds] = useState(DEFAULT_POLL_SECONDS);
+  // Se incrementa tras cada cambio hecho desde el panel; las vistas con lista propia lo usan para recargar.
+  const [incidentsVersion, setIncidentsVersion] = useState(0);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadData = useCallback(async () => {
@@ -128,17 +130,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setLlmHealth([]);
   }, [router]);
 
-  const resolveIncident = useCallback(async (id: string) => {
-    setSelectedIncidentId(null);
-    await patchIncident(id, { estado: 'resuelto', resolved_at: new Date().toISOString() });
+  const bumpIncidents = useCallback(() => {
+    setIncidentsVersion((v) => v + 1);
     void loadData();
   }, [loadData]);
 
+  // Las dos acciones esperan la respuesta con el panel abierto: si fallan, el error le llega al panel
+  // (que lo muestra y deja reintentar); si salen bien, se cierra y se refrescan las listas.
+  const resolveIncident = useCallback(async (id: string) => {
+    await patchIncident(id, { estado: 'resuelto', resolved_at: new Date().toISOString() });
+    setSelectedIncidentId((cur) => (cur === id ? null : cur));
+    bumpIncidents();
+  }, [bumpIncidents]);
+
   const documentIncident = useCallback(async (id: string) => {
-    setSelectedIncidentId(null);
     await generateDocument(id);
-    void loadData();
-  }, [loadData]);
+    setSelectedIncidentId((cur) => (cur === id ? null : cur));
+    bumpIncidents();
+  }, [bumpIncidents]);
 
   const ctx: AppContextType = {
     user, login, logout,
@@ -155,7 +164,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     refreshNotifications: () => { void loadNotifications(); },
     llmHealth, setLlmHealth,
     resolveIncident, documentIncident,
-    refreshIncidents: () => { void loadData(); },
+    incidentsVersion,
+    refreshIncidents: bumpIncidents,
     pollingSeconds, setPollingSeconds,
   };
 

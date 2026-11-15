@@ -104,3 +104,27 @@ export function collectPageErrors(page: Page): string[] {
   });
   return errors;
 }
+
+/** Prefijo de todo lo que crea la suite (usuarios, documentos): permite identificarlo y limpiarlo. */
+export const E2E_PREFIX = 'e2e-';
+
+/**
+ * Elimina los documentos de la base de conocimiento creados por la suite (tipo_alerta que empieza con `e2e-`).
+ * Intenta DELETE /incidents/{id}; si el backend no lo ofrece (404/405) los deja identificables por el prefijo
+ * y devuelve cuáles quedaron para que el llamador lo informe. Nunca lanza: es limpieza best-effort.
+ */
+export async function cleanupE2eDocs(api: APIRequestContext): Promise<string[]> {
+  const left: string[] = [];
+  try {
+    const res = await api.get(`incidents?search=${encodeURIComponent(E2E_PREFIX)}&size=100`);
+    if (!res.ok()) return left;
+    const { data } = (await res.json()) as { data: { id: string; tipo_alerta: string }[] };
+    for (const d of data.filter((d) => d.tipo_alerta.toLowerCase().startsWith(E2E_PREFIX))) {
+      const del = await api.delete(`incidents/${d.id}`);
+      if (!del.ok()) left.push(`${d.id} (${d.tipo_alerta})`);
+    }
+  } catch {
+    /* limpieza best-effort */
+  }
+  return left;
+}

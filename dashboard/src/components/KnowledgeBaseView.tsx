@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { BookOpen, Search, FileText, Cpu, ChevronRight, Plus, Sparkles, Database } from 'lucide-react';
+import { BookOpen, Search, FileText, Cpu, ChevronRight, Plus, Sparkles, Database, CheckCircle2 } from 'lucide-react';
 import { useApp } from '@/types';
-import type { IncidentSummary } from '@/types';
+import type { IncidentDetail, IncidentSummary } from '@/types';
 import { getSettings, listKnowledgeBase } from '@/api';
 import { deriveComponent } from '@/adapters';
+import { NewKnowledgeDocModal } from './NewKnowledgeDocModal';
 
 function fmtDate(iso?: string): string {
   if (!iso) return '—';
@@ -16,7 +17,8 @@ function fmtDate(iso?: string): string {
 const SIZE = 50;
 
 export function KnowledgeBaseView() {
-  const { setSelectedIncidentId } = useApp();
+  const { user, setSelectedIncidentId, incidentsVersion, refreshIncidents } = useApp();
+  const isAdmin = user?.role === 'Admin';
   const [rows, setRows] = useState<IncidentSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -25,6 +27,8 @@ export function KnowledgeBaseView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const [threshold, setThreshold] = useState<number | null>(null);
+  const [showNewDoc, setShowNewDoc] = useState(false);
+  const [createdNotice, setCreatedNotice] = useState<string | null>(null);
 
   useEffect(() => {
     getSettings()
@@ -42,7 +46,7 @@ export function KnowledgeBaseView() {
       })
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [page, search]);
+  }, [page, search, incidentsVersion]);
 
   const categories = ['Todos', ...Array.from(new Set(rows.map((r) => deriveComponent(r.tipo_alerta))))];
 
@@ -51,6 +55,17 @@ export function KnowledgeBaseView() {
     : rows.filter((r) => deriveComponent(r.tipo_alerta) === selectedCategory);
 
   const totalPages = Math.max(1, Math.ceil(total / SIZE));
+
+  const handleCreated = (doc: IncidentDetail) => {
+    setShowNewDoc(false);
+    // Se limpia la búsqueda/categoría para que el documento nuevo aparezca en la lista, y se abre su detalle.
+    setSearch('');
+    setSelectedCategory('Todos');
+    setPage(1);
+    refreshIncidents();
+    setCreatedNotice(`Documento «${doc.tipo_alerta}» creado en la base de conocimiento.`);
+    setSelectedIncidentId(doc.id);
+  };
 
   return (
     <div className="space-y-5">
@@ -90,11 +105,27 @@ export function KnowledgeBaseView() {
             className="w-full bg-slate-900/60 border border-slate-800 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 transition-all"
           />
         </div>
-        <button className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-all shadow-lg shadow-cyan-500/20">
-          <Plus className="w-4 h-4" />
-          Nuevo Documento
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => { setCreatedNotice(null); setShowNewDoc(true); }}
+            className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-all shadow-lg shadow-cyan-500/20"
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo Documento
+          </button>
+        )}
       </div>
+
+      {createdNotice != null && (
+        <div role="status" className="flex items-center gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
+          <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="flex-1">{createdNotice}</span>
+          <button type="button" onClick={() => setCreatedNotice(null)} className="text-emerald-400/70 hover:text-emerald-200">
+            Cerrar
+          </button>
+        </div>
+      )}
 
       {/* Category filters */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -124,7 +155,7 @@ export function KnowledgeBaseView() {
       )}
       {!loading && !error && filtered.length === 0 && (
         <div className="py-12 text-center text-slate-500 text-sm">
-          Todavía no hay documentos auto-generados.
+          Todavía no hay documentos en la base de conocimiento.
         </div>
       )}
       {!loading && !error && filtered.length > 0 && (
@@ -190,6 +221,10 @@ export function KnowledgeBaseView() {
             </button>
           </div>
         </div>
+      )}
+
+      {showNewDoc && isAdmin && (
+        <NewKnowledgeDocModal onClose={() => setShowNewDoc(false)} onCreated={handleCreated} />
       )}
 
       {/* BookOpen icon if empty */}

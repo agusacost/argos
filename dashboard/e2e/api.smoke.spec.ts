@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { ADMIN, apiAs, login, readRunState } from './helpers';
+import { ADMIN, E2E_PREFIX, apiAs, login, readRunState } from './helpers';
 
 // Capa A: endpoints que consume el dashboard, vía el proxy nginx :3001/api.
 
@@ -54,6 +54,26 @@ test.describe('lectura (Admin)', () => {
     const body = await (await admin.get('incidents/knowledge-base?size=100')).json();
     expect(body.total).toBeGreaterThanOrEqual(5);
     for (const r of body.data) expect(['documentado_previamente', 'auto_documentado']).toContain(r.estado);
+  });
+
+  test('K-05 los runbooks manuales traen el cuerpo Markdown en `documento`', async () => {
+    const kb = (await (await admin.get('incidents/knowledge-base?size=100')).json()) as
+      { data: { id: string; estado: string; tipo_alerta: string }[] };
+    const runbooks = kb.data.filter((r) => r.estado === 'documentado_previamente');
+    expect(runbooks.length).toBeGreaterThanOrEqual(5);
+    for (const r of runbooks.filter((r) => !r.tipo_alerta.startsWith(E2E_PREFIX))) {
+      const d = (await (await admin.get(`incidents/${r.id}`)).json()) as { documento?: string };
+      expect((d.documento ?? '').length, `runbook ${r.id} sin documento`).toBeGreaterThan(0);
+    }
+  });
+
+  test('I-04 GET /incidents?tipo= coincide en parte y sin distinguir mayúsculas', async () => {
+    const exact = (await (await admin.get('incidents?tipo=NginxDown&size=1')).json()) as { total: number };
+    test.skip(exact.total === 0, 'no hay incidentes NginxDown');
+    const partial = (await (await admin.get('incidents?tipo=gInX&size=100')).json()) as
+      { total: number; data: { tipo_alerta: string }[] };
+    expect(partial.total).toBeGreaterThanOrEqual(exact.total);
+    for (const r of partial.data) expect(r.tipo_alerta.toLowerCase()).toContain('ginx');
   });
 
   test('I-05 detalle, observabilidad y auditoría', async () => {
@@ -118,7 +138,34 @@ test.describe('validaciones', () => {
   });
 });
 
+test.describe('validaciones: POST /incidents/knowledge-base', () => {
+  test('K-06 sin tipo_alerta o sin resumen → 422 con detail', async () => {
+    for (const data of [
+      { resumen: 'x', pasos: ['p'] },
+      { tipo_alerta: `${E2E_PREFIX}val`, pasos: ['p'] },
+    ]) {
+      const res = await admin.post('incidents/knowledge-base', { data });
+      expect(res.status()).toBe(422);
+      expect(typeof (await res.json()).detail).toBe('string');
+    }
+  });
+
+  test('K-06 sin pasos ni documento → 422 con detail', async () => {
+    const res = await admin.post('incidents/knowledge-base', {
+      data: { tipo_alerta: `${E2E_PREFIX}val`, resumen: 'x', pasos: [] },
+    });
+    expect(res.status()).toBe(422);
+    expect(typeof (await res.json()).detail).toBe('string');
+  });
+});
+
 test.describe('RBAC: Operador', () => {
+  test('K-06 POST /incidents/knowledge-base → 403 (solo Admin, como la UI)', async () => {
+    const res = await operador.post('incidents/knowledge-base', {
+      data: { tipo_alerta: `${E2E_PREFIX}rbac`, resumen: 'x', pasos: ['p'] },
+    });
+    expect(res.status()).toBe(403);
+  });
   test('U-01 /users → 403', async () => {
     expect((await operador.get('users')).status()).toBe(403);
   });
@@ -127,6 +174,12 @@ test.describe('RBAC: Operador', () => {
   });
   test('L-03 POST /loadtests/runs → 403', async () => {
     expect((await operador.post('loadtests/runs', { data: { scenario: 'normal' } })).status()).toBe(403);
+  });
+  test('K-06 POST /incidents/knowledge-base sin token → 401', async () => {
+    const res = await anon.post('incidents/knowledge-base', {
+      data: { tipo_alerta: `${E2E_PREFIX}anon`, resumen: 'x', pasos: ['p'] },
+    });
+    expect(res.status()).toBe(401);
   });
   test('I-07 POST /incidents/{id}/document → 403 (solo Admin, como la UI)', async () => {
     // El 403 sale de la autorización, antes de llamar al LLM: no modifica nada.

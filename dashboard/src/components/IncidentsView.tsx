@@ -20,7 +20,7 @@ const ESTADOS = [
 const SIZE = 20;
 
 export function IncidentsView() {
-  const { selectedIncidentId, setSelectedIncidentId, incidentsEstadoFilter } = useApp();
+  const { selectedIncidentId, setSelectedIncidentId, incidentsEstadoFilter, incidentsVersion } = useApp();
   const [rows, setRows] = useState<IncidentVM[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -52,7 +52,7 @@ export function IncidentsView() {
       })
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [page, estado, tipo, search]);
+  }, [page, estado, tipo, search, incidentsVersion]);
 
   const totalPages = Math.max(1, Math.ceil(total / SIZE));
 
@@ -85,12 +85,19 @@ export function IncidentsView() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             placeholder="Filtrar por tipo…"
+            aria-label="Filtrar por tipo de alerta"
+            aria-describedby="tipo-filter-hint"
             value={tipo}
             onChange={(e) => { setPage(1); setTipo(e.target.value); }}
             className="bg-slate-900/60 border border-slate-800 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 transition-all w-48"
           />
         </div>
       </div>
+
+      <p id="tipo-filter-hint" className="text-[10px] text-slate-600 -mt-2">
+        El filtro por tipo coincide con cualquier parte del nombre de la alerta, sin distinguir mayúsculas
+        (por ejemplo, «nginx» encuentra NginxDown).
+      </p>
 
       {/* Table */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
