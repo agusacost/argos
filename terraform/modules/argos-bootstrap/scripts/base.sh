@@ -59,6 +59,19 @@ vm.max_map_count=262144
 EOF
 sysctl --system >/dev/null || true
 
+log "Swap de 4 GiB (margen de memoria en instancias de 8 GiB)..."
+if ! swapon --show=NAME --noheadings | grep -q '^/swapfile$'; then
+  if [[ ! -f /swapfile ]]; then
+    fallocate -l 4G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+  fi
+  swapon /swapfile
+fi
+grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+echo 'vm.swappiness=10' > /etc/sysctl.d/99-swap.conf
+sysctl -p /etc/sysctl.d/99-swap.conf >/dev/null || true
+
 log "Verificando instalación..."
 docker --version
 docker compose version

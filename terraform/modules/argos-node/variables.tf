@@ -37,9 +37,10 @@ variable "instance_type" {
   description = <<-EOT
     Tipo de instancia EC2. Default t3.xlarge (4 vCPU, 16 GiB): la propuesta dimensiona ~7 vCPU / 10 GB RAM sumando
     los límites de cada contenedor, pero el consumo real es mayormente ocioso y la restricción dura es la memoria
-    (SQL Server + API .NET con ONNX + Loki/Prometheus + n8n superan los 8 GiB de un t3.large). t3 es burstable, así
-    que los picos de CPU (build inicial, pruebas k6) se absorben con créditos. Para igualar los 7-8 vCPU nominales
-    sin burst: t3.2xlarge (8 vCPU, 32 GiB) o m6i.2xlarge. Debe ser x86_64: la imagen de SQL Server 2022 es solo amd64.
+    (SQL Server + API .NET con ONNX + Loki/Prometheus + n8n; estimado en 5-6 GiB en reposo, sin medir). t3 es
+    burstable, así que los picos de CPU (build inicial, pruebas k6) se absorben con créditos. En el plan gratuito de
+    AWS el tipo elegible más grande es m7i-flex.large (2 vCPU, 8 GiB): entra justo, con el swap de 4 GiB que crea el
+    arranque. Debe ser x86_64: la imagen de SQL Server 2022 es solo amd64.
   EOT
   type        = string
   default     = "t3.xlarge"

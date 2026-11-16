@@ -310,12 +310,13 @@ docker compose down -v        # bajar + borrar volúmenes
 que se copia de `terraform.tfvars.example` y no se versiona).
 
 Cambios típicos:
-- Dimensionamiento: `instance_type` (default `t3.xlarge`: 4 vCPU/16 GiB; con 8 GiB no alcanza), `root_volume_size_gb`
+- Dimensionamiento: `instance_type` (default `t3.xlarge`: 4 vCPU/16 GiB; 8 GiB + swap de 4 GiB estimado justo, sin medir), `root_volume_size_gb`
 - Acceso: `admin_cidr_blocks` (obligatoria; panel 3001, Grafana 3000 y SSH) y `ssh_public_key`; solo 80 y 8443 quedan abiertos a Internet
 - Qué se despliega: `repo_url`/`repo_ref` y el mapa `argos_env` (se escribe como `.env` en la VM)
-- **Nube elegida: GCP** (decisión del autor, 2026-11-16): `environments/gcp` + `modules/argos-node-gcp` (`project_id`, `region`, `zone`,
-  `machine_type` default `e2-standard-4`; credenciales con `gcloud auth application-default login`). El arranque es el módulo común
-  `argos-bootstrap`. AWS queda como alternativa sin aplicar. LocalStack: `ami_id = "ami-785db401"`; su instancia es simulada (el `user_data` no corre);
+- **Nube elegida: AWS, plan gratuito** (decisión del autor, 2026-11-16; GCP quedó bloqueado por el prepago de 30 USD en Argentina).
+  **No salir del free tier:** `m7i-flex.large` (el tipo elegible más grande), disco 30 GB, `associate_eip = false`; nada de NAT,
+  balanceador ni backend S3 (ver `environments/aws/terraform.tfvars.example`). El arranque (`argos-bootstrap`) crea 4 GiB de swap.
+  GCP (`environments/gcp` + `modules/argos-node-gcp`, `e2-standard-4`) queda como alternativa preparada y no aplicada. LocalStack: `ami_id = "ami-785db401"`; su instancia es simulada (el `user_data` no corre);
   `-var deploy_local_stack=true` levanta el compose contra el Docker local
 
 **Comandos:**

@@ -1,11 +1,18 @@
 # Copiar como terraform.tfvars (ignorado por git) y completar. NUNCA commitear el terraform.tfvars real.
 # Credenciales de AWS: por entorno (AWS_PROFILE o AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY), no acá.
+#
+# Valores pensados para el plan gratuito de AWS (cuentas creadas desde el 15/07/2025):
+#   - instancia: solo tipos elegibles; el más grande es m7i-flex.large (2 vCPU / 8 GiB). El arranque agrega 4 GiB de swap.
+#   - disco: 30 GB de EBS gp3 incluidos (es también el mínimo que acepta el módulo).
+#   - IP: sin Elastic IP; se usa la IPv4 pública automática de la subred (cambia si la instancia se detiene).
+#   - VPC, subred, gateway, rutas, security group y key pair no tienen costo. No hay NAT, balanceador ni backend S3.
+# Con una cuenta de pago: instance_type = "t3.xlarge" (4 vCPU / 16 GiB), 50 GB y associate_eip = true.
 
 aws_region = "us-east-1"
 
-# t3.xlarge (4 vCPU / 16 GiB) ≈ dimensionamiento de la propuesta; t3.2xlarge si se quieren 8 vCPU sin burst.
-instance_type       = "t3.xlarge"
-root_volume_size_gb = 50
+instance_type       = "m7i-flex.large"
+root_volume_size_gb = 30
+associate_eip       = false
 
 # Tu IP pública con /32 (curl -s https://checkip.amazonaws.com). Acceso al panel, Grafana y SSH.
 admin_cidr_blocks = ["203.0.113.10/32"]
@@ -15,7 +22,7 @@ ssh_public_key = "ssh-ed25519 AAAA...REEMPLAZAR usuario@equipo"
 
 # Código a desplegar (repositorio público; rama, tag o commit).
 repo_url = "https://github.com/agusacost/argos.git"
-repo_ref = "master"
+repo_ref = "feat/dashboard-nextjs"
 
 # Se escribe en docker/monitoring/.env de la VM (mismas claves que docker/monitoring/.env.example).
 # N8N_ENCRYPTION_KEY, JWT_SECRET, ARGOS_INTERNAL_TOKEN y ARGOS_ADMIN_PASSWORD se generan solos si se omiten.
