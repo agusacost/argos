@@ -1,6 +1,6 @@
 # Integración continua de Argos: valida y compila lo que contiene el repositorio.
-# Es CI, no CD: no despliega nada. El despliegue en AWS es manual con Terraform
-# (terraform/environments/aws, ver README).
+# Es CI, no CD: no despliega nada. El despliegue en la nube es manual con Terraform
+# (terraform/environments/gcp o aws, ver README).
 name: CI
 
 on:
@@ -41,9 +41,9 @@ jobs:
       - name: terraform fmt
         run: terraform -chdir=terraform fmt -check -recursive -diff
 
-      - name: terraform validate (localstack y aws)
+      - name: terraform validate (localstack, aws y gcp)
         run: |
-          for env in localstack aws; do
+          for env in localstack aws gcp; do
             echo "::group::$env"
             terraform -chdir="terraform/environments/$env" init -backend=false -input=false
             terraform -chdir="terraform/environments/$env" validate

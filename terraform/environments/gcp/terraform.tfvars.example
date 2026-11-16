@@ -1,0 +1,39 @@
+# Copiar como terraform.tfvars (ignorado por git) y completar. NUNCA commitear el terraform.tfvars real.
+# Credenciales de Google Cloud: `gcloud auth application-default login`, no acá.
+
+project_id = "REEMPLAZAR-id-del-proyecto"
+region     = "us-central1"
+zone       = "us-central1-a"
+
+# e2-standard-4 (4 vCPU / 16 GB). e2-standard-2 (2 vCPU / 8 GB) si la medición con docker stats deja margen.
+# El nivel gratuito (e2-micro, 1 GB) no alcanza para el stack.
+machine_type      = "e2-standard-4"
+boot_disk_size_gb = 50
+
+# Tu IP pública con /32 (curl -s https://checkip.amazonaws.com). Acceso al panel, Grafana y SSH.
+admin_cidr_blocks = ["203.0.113.10/32"]
+
+# Contenido de tu clave pública (no la ruta). Sin esto no hay SSH ni túnel a n8n.
+ssh_public_key = "ssh-ed25519 AAAA...REEMPLAZAR usuario@equipo"
+
+# Código a desplegar (repositorio público; rama, tag o commit).
+repo_url = "https://github.com/agusacost/argos.git"
+repo_ref = "feat/dashboard-nextjs"
+
+# Se escribe en docker/monitoring/.env de la VM (mismas claves que docker/monitoring/.env.example).
+# N8N_ENCRYPTION_KEY, JWT_SECRET, ARGOS_INTERNAL_TOKEN y ARGOS_ADMIN_PASSWORD se generan solos si se omiten.
+# Valores sin comillas simples ni saltos de línea.
+argos_env = {
+  LLM_PROVIDER          = "gemini"
+  GEMINI_API_KEY        = "REEMPLAZAR"
+  GEMINI_MODEL          = "gemini-flash-lite-latest"
+  GROQ_API_KEY          = ""
+  OPENROUTER_API_KEY    = ""
+  SMTP_HOST             = "smtp.gmail.com"
+  SMTP_PORT             = "587"
+  SMTP_USER             = "REEMPLAZAR@gmail.com"
+  SMTP_PASSWORD         = "REEMPLAZAR-app-password"
+  SMTP_FROM             = "REEMPLAZAR@gmail.com"
+  ALERT_RECIPIENT_EMAIL = "REEMPLAZAR@example.com"
+  SIMILARITY_THRESHOLD  = "0.68"
+}

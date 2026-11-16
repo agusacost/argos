@@ -3,6 +3,8 @@
 # (monitoring + apps + proxy vía el docker-compose.yml raíz).
 # Lo consumen environments/localstack y environments/aws: la
 # diferencia entre ambos es solo el provider y los valores.
+# El arranque (cloud-init) sale del módulo argos-bootstrap, que
+# comparte con argos-node-gcp.
 # ============================================================
 
 locals {
@@ -147,7 +149,7 @@ resource "aws_instance" "this" {
   vpc_security_group_ids = [aws_security_group.node.id]
   key_name               = one(aws_key_pair.this[*].key_name)
 
-  user_data_base64 = data.cloudinit_config.bootstrap.rendered
+  user_data_base64 = module.bootstrap.user_data_base64
 
   # IMDSv2 obligatorio: el user_data contiene secretos (el .env).
   metadata_options {

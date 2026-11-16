@@ -219,21 +219,28 @@ docker compose down
 docker compose down -v
 ```
 
-### Infraestructura como código (Terraform: LocalStack y AWS)
+### Infraestructura como código (Terraform: LocalStack, AWS y GCP)
 
 ```
 terraform/
-├── modules/argos-node/          — la infraestructura (compartida)
-│   ├── main.tf                  VPC + subred pública + IGW, security group, EC2, Elastic IP
-│   ├── bootstrap.tf             user_data (cloud-init) + secretos generados
-│   ├── scripts/base.sh          Docker Engine + Compose plugin + git
-│   └── templates/deploy.sh.tftpl  .env, clone del repo, argos-net, docker compose up -d --build
+├── modules/
+│   ├── argos-bootstrap/         — el arranque, igual en cualquier nube
+│   │   ├── main.tf              cloud-init + secretos generados
+│   │   ├── scripts/base.sh      Docker Engine + Compose plugin + git
+│   │   └── templates/deploy.sh.tftpl  .env, clone del repo, argos-net, docker compose up -d --build
+│   ├── argos-node/              — AWS: VPC + subred pública + IGW, security group, EC2, Elastic IP
+│   └── argos-node-gcp/          — GCP: red + subred, reglas de firewall, instancia de Compute Engine, IP fija
 └── environments/
-    ├── localstack/              provider con endpoints de LocalStack + credenciales de prueba
-    └── aws/                     provider real (credenciales por la cadena estándar de AWS)
+    ├── localstack/              argos-node contra LocalStack (credenciales de prueba)
+    ├── aws/                     argos-node contra AWS real
+    └── gcp/                     argos-node-gcp contra Google Cloud
 ```
 
-`main.tf`, `variables.tf` y `outputs.tf` son **idénticos** en los dos entornos: ambos instancian el módulo
+Los tres entornos comparten el módulo `argos-bootstrap`: la plataforma se instala y arranca igual en todos. La red y
+la máquina virtual son propias de cada proveedor (`argos-node` para AWS y LocalStack, `argos-node-gcp` para GCP), con
+la misma superficie expuesta y las mismas salidas.
+
+`main.tf`, `variables.tf` y `outputs.tf` son **idénticos** en `localstack` y `aws`: ambos instancian el módulo
 `argos-node`. Lo que cambia es `providers.tf` (endpoints/credenciales) y los valores de `terraform.tfvars`.
 LocalStack agrega además `localstack.tf` (bloque `moved` para el state anterior y el despliegue local opcional).
 
@@ -255,6 +262,27 @@ Prometheus, Loki, Alertmanager, Qdrant, n8n, la API y SQL Server **no** se expon
 si no se pasan), clona `repo_url`@`repo_ref` en `/opt/argos`, copia el `.env` a `docker/monitoring/.env`, crea
 `argos-net`, ejecuta `docker compose -p argos-platform up -d --build` e importa/activa el workflow de n8n.
 Log en `/var/log/argos-deploy.log`. Para actualizar el código después: `sudo argos-deploy` en la VM.
+
+#### GCP
+
+En GCP el módulo crea una red con una subred, dos reglas de firewall (públicas y de administración), una IP externa
+fija y una instancia Ubuntu 24.04 (por defecto `e2-standard-4`, 4 vCPU / 16 GB, disco `pd-balanced` de 50 GB, Shielded
+VM, sin cuenta de servicio). El nivel gratuito (`e2-micro`, 1 GB) no alcanza: SQL Server solo ya necesita 2 GB.
+
+```powershell
+gcloud auth application-default login             # credenciales para Terraform
+gcloud services enable compute.googleapis.com --project <id-del-proyecto>
+cd terraform\environments\gcp
+copy terraform.tfvars.example terraform.tfvars   # completar: project_id, admin_cidr_blocks, ssh_public_key, argos_env
+terraform init
+terraform plan
+terraform apply
+terraform output urls
+terraform output -raw argos_admin_password        # usuario admin@argos.local del panel
+```
+
+Los pasos posteriores al apply son los mismos que en AWS (abajo). `terraform destroy` al terminar: la instancia, el
+disco y la IP reservada tienen costo. Conviene crear antes una alerta de presupuesto en el proyecto.
 
 #### AWS
 
@@ -380,8 +408,8 @@ Copiá `docker/monitoring/.env.example` a `docker/monitoring/.env` y completá l
 
 ### `terraform/environments/<entorno>/terraform.tfvars`
 
-Copiar el `terraform.tfvars.example` del entorno (`localstack` o `aws`). Ver
-[Infraestructura como código](#infraestructura-como-código-terraform-localstack-y-aws).
+Copiar el `terraform.tfvars.example` del entorno (`localstack`, `aws` o `gcp`). Ver
+[Infraestructura como código](#infraestructura-como-código-terraform-localstack-aws-y-gcp).
 
 ---
 

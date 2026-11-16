@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Provisioning base del nodo Argos (Ubuntu): Docker Engine + Compose plugin + git.
-# Lo ejecuta cloud-init como primera parte del user_data (módulo argos-node, bootstrap.tf).
+# Lo ejecuta cloud-init como primera parte del arranque (módulo argos-bootstrap). Igual en AWS y en GCP.
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive

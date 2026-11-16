@@ -47,6 +47,6 @@ output "ssh_command" {
 
 output "argos_admin_password" {
   description = "Contraseña del usuario admin@argos.local del panel (generada si no se pasó en argos_env)."
-  value       = local.app_env["ARGOS_ADMIN_PASSWORD"]
+  value       = module.bootstrap.admin_password
   sensitive   = true
 }

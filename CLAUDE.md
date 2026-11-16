@@ -217,10 +217,13 @@ D:\DEV\argos/
 │   ├── PRODUCT_BACKLOG.md, EVALUACION_OE3.md, FIXES_DASHBOARD.md, VALIDACION_API.md, Informe_Final_*.docx/.pdf
 ├── eval/                                     — Evaluación del OE3 (scenarios.json, faults.ps1, run-llm-eval.mjs, run-auto.mjs, results/)
 ├── terraform/
-│   ├── modules/argos-node/                   — Módulo compartido: VPC, SG, EC2 (IMDSv2, gp3 cifrado), EIP, secretos, cloud-init
+│   ├── modules/argos-bootstrap/              — Arranque común a cualquier nube: secretos generados + cloud-init (base.sh, deploy.sh.tftpl)
+│   ├── modules/argos-node/                   — AWS: VPC, SG, EC2 (IMDSv2, gp3 cifrado), EIP; usa argos-bootstrap
+│   ├── modules/argos-node-gcp/               — GCP: red, firewall, Compute Engine (Shielded VM), IP fija; usa argos-bootstrap
 │   └── environments/
-│       ├── localstack/                       — Mismo módulo contra LocalStack (+ localstack.tf: deploy_local_stack opcional)
-│       └── aws/                              — Mismo módulo contra AWS real (sin aplicar aún)
+│       ├── localstack/                       — argos-node contra LocalStack (+ localstack.tf: deploy_local_stack opcional)
+│       ├── aws/                              — argos-node contra AWS real (sin aplicar)
+│       └── gcp/                              — argos-node-gcp contra Google Cloud (nube elegida el 16/11; sin aplicar aún)
 ├── docker/
 │   ├── monitoring/                           — Stack observabilidad + Qdrant
 │   │   ├── docker-compose.yml
@@ -310,7 +313,9 @@ Cambios típicos:
 - Dimensionamiento: `instance_type` (default `t3.xlarge`: 4 vCPU/16 GiB; con 8 GiB no alcanza), `root_volume_size_gb`
 - Acceso: `admin_cidr_blocks` (obligatoria; panel 3001, Grafana 3000 y SSH) y `ssh_public_key`; solo 80 y 8443 quedan abiertos a Internet
 - Qué se despliega: `repo_url`/`repo_ref` y el mapa `argos_env` (se escribe como `.env` en la VM)
-- No hay scaffold de GCP: la nube elegida es AWS. LocalStack: `ami_id = "ami-785db401"`; su instancia es simulada (el `user_data` no corre);
+- **Nube elegida: GCP** (decisión del autor, 2026-11-16): `environments/gcp` + `modules/argos-node-gcp` (`project_id`, `region`, `zone`,
+  `machine_type` default `e2-standard-4`; credenciales con `gcloud auth application-default login`). El arranque es el módulo común
+  `argos-bootstrap`. AWS queda como alternativa sin aplicar. LocalStack: `ami_id = "ami-785db401"`; su instancia es simulada (el `user_data` no corre);
   `-var deploy_local_stack=true` levanta el compose contra el Docker local
 
 **Comandos:**
@@ -530,3 +535,4 @@ terraform state rm resource-name   # Remover recurso de state
 | 2026-11-15 | Claude Code | **Contexto del entorno a configuración** (decisión del autor: los nombres de contenedores escritos en los prompts eran otra forma de que Argos conociera el servicio): campo `environment_context` en `argos_settings`, editable en Configuración (solo Admin, tope 3000, 422 si se excede), que n8n recibe en `Get Config`; valor inicial `ARGOS_ENVIRONMENT_CONTEXT` (el `.env.example` trae la descripción anterior); vacío = prompt genérico; el código conserva solo una instrucción genérica (n8n, `LlmService`, `IncidentDocumentPrompt`). 102 pruebas unitarias en verde. Corridas F1/F2/F7: F1 y F7 con arreglo exacto, F2 parcial (N = 1; la diferencia con la corrida previa no se atribuye al cambio). El campo no se vio en un navegador. Docs: EVALUACION_OE3 §6.7, PRODUCT_BACKLOG, FUNCIONALIDADES_DASHBOARD. |
 | 2026-11-15 | Claude Code | **Runbooks fuera de la imagen de Argos**: `argos-api/Argos.Api/knowledge/` → `docker/monitoring/knowledge/` (volumen `:ro` sobre `/app/knowledge`); el `.csproj` ya no los copia; `DemoIncidentCatalog` sin nombres del servicio de ejemplo. Contraseña `sa` eliminada del runbook `nginx-5xx.md` y de 17 incidentes de Qdrant (vía `PATCH`). Borrado el doc `DotnetMigrationE2E`. 106 pruebas en verde; RAG 7/7 conocidas. Suite E2E completa: 101/103 ok, 2 omitidas; corregido M-04 (latencia de Nginx agrupada `by (service)`) y +3 pruebas de C-08. |
 | 2026-11-15 | Claude Code | **Cierre de documentación**: Informe Final (87 páginas) con los runbooks fuera de la imagen, la contraseña en la base de conocimiento, la suite E2E real (101/103), el defecto de latencia M-04 y los desvíos respecto de la propuesta (LocalStack comunitario, nodo único, CI sin CD); presentación, SPEECH y `ARQUITECTURA.html` al día. Tercera tanda F1/F2/F7 ×3 **interrumpida por falta de memoria** en la segunda corrida (F1 exacto, F2 no): acumulado del 15/11 F1 3/3, F7 2/2, F2 1/3 (`EVALUACION_OE3.md` §6.8). Rama `feat/dashboard-nextjs` commiteada pero **sin subir** (push pendiente del autor). |
+| 2026-11-16 | Claude Code | **Terraform para GCP** (decisión del autor: desplegar en Google Cloud, unas horas y destruir): el arranque (secretos + cloud-init) se extrajo a `modules/argos-bootstrap` (con bloques `moved` en `argos-node`), módulo nuevo `modules/argos-node-gcp` (red, firewall 80/8443 públicos y 3001/3000/22 por CIDR, Compute Engine Ubuntu 24.04 con Shielded VM y sin cuenta de servicio, IP fija) y entorno `environments/gcp`; CI valida los tres entornos. `fmt` y `validate` OK y cloud-init renderizado en local; **sin `plan`/`apply` en GCP** (falta cuenta) y **sin re-verificar contra LocalStack** tras la extracción (Docker apagado, poca memoria). El CI corrió en GitHub por primera vez el 16/11: 6 de 6 jobs en verde. Dimensionamiento: 7 vCPU de la propuesta no hacen falta; el límite es la memoria (medición pendiente). |
